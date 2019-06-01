@@ -409,7 +409,7 @@ char *CON_Input( void )
 		int     len;
 		fd_set  fdset;
 		struct timeval timeout;
-		static qboolean stdin_active;
+		static qboolean stdin_active = qtrue;
 
 		if (!com_dedicated || !com_dedicated->value)
 			return NULL;
