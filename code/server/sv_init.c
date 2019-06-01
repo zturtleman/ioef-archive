@@ -638,7 +638,11 @@ void SV_Init (void) {
 	Cvar_Get ("timelimit", "0", CVAR_SERVERINFO);
 	sv_gametype = Cvar_Get ("g_gametype", "0", CVAR_SERVERINFO | CVAR_LATCH );
 	Cvar_Get ("sv_keywords", "", CVAR_SERVERINFO);
+#ifdef ELITEFORCE
+	Cvar_Get ("protocol", va("%i", EFPROTOCOL_VERSION), CVAR_SERVERINFO | CVAR_ROM);
+#else
 	Cvar_Get ("protocol", va("%i", PROTOCOL_VERSION), CVAR_SERVERINFO | CVAR_ROM);
+#endif
 	sv_mapname = Cvar_Get ("mapname", "nomap", CVAR_SERVERINFO | CVAR_ROM);
 	sv_privateClients = Cvar_Get ("sv_privateClients", "0", CVAR_SERVERINFO);
 	sv_hostname = Cvar_Get ("sv_hostname", "noname", CVAR_SERVERINFO | CVAR_ARCHIVE );
@@ -662,7 +666,11 @@ void SV_Init (void) {
 	// server vars
 	sv_rconPassword = Cvar_Get ("rconPassword", "", CVAR_TEMP );
 	sv_privatePassword = Cvar_Get ("sv_privatePassword", "", CVAR_TEMP );
+	#ifdef ELITEFORCE
+	sv_fps = Cvar_Get ("sv_fps", "20", CVAR_SYSTEMINFO | CVAR_TEMP);
+	#else
 	sv_fps = Cvar_Get ("sv_fps", "20", CVAR_TEMP );
+	#endif
 	sv_timeout = Cvar_Get ("sv_timeout", "200", CVAR_TEMP );
 	sv_zombietime = Cvar_Get ("sv_zombietime", "2", CVAR_TEMP );
 	Cvar_Get ("nextmap", "", CVAR_TEMP );
@@ -670,8 +678,13 @@ void SV_Init (void) {
 	sv_allowDownload = Cvar_Get ("sv_allowDownload", "0", CVAR_SERVERINFO);
 	Cvar_Get ("sv_dlURL", "", CVAR_SERVERINFO | CVAR_ARCHIVE);
 	sv_master[0] = Cvar_Get ("sv_master1", MASTER_SERVER_NAME, 0 );
+	#ifdef ELITEFORCE
+	sv_master[1] = Cvar_Get ("sv_master2", "master.thewizclan.com", CVAR_ARCHIVE );
+	sv_master[2] = Cvar_Get ("sv_master3", "efmaster.kickchat.com", CVAR_ARCHIVE );
+	#else
 	sv_master[1] = Cvar_Get ("sv_master2", "", CVAR_ARCHIVE );
 	sv_master[2] = Cvar_Get ("sv_master3", "", CVAR_ARCHIVE );
+	#endif
 	sv_master[3] = Cvar_Get ("sv_master4", "", CVAR_ARCHIVE );
 	sv_master[4] = Cvar_Get ("sv_master5", "", CVAR_ARCHIVE );
 	sv_reconnectlimit = Cvar_Get ("sv_reconnectlimit", "3", 0);
@@ -714,7 +727,13 @@ void SV_FinalMessage( char *message ) {
 				// don't send a disconnect to a local client
 				if ( cl->netchan.remoteAddress.type != NA_LOOPBACK ) {
 					SV_SendServerCommand( cl, "print \"%s\n\"\n", message );
-					SV_SendServerCommand( cl, "disconnect \"%s\"", message );
+					
+					#ifdef ELITEFORCE
+					if(cl->compat)
+						SV_SendServerCommand(cl, "disconnect Server shutdown: %s", message);
+					else
+					#endif
+						SV_SendServerCommand( cl, "disconnect \"%s\"", message );
 				}
 				// force a snapshot to be sent
 				cl->nextSnapshotTime = -1;

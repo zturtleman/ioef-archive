@@ -169,6 +169,8 @@ typedef struct client_s {
 
 	int				oldServerTime;
 	qboolean			csUpdated[MAX_CONFIGSTRINGS+1];	
+
+	qboolean		compat;		// compatibility mode for original EliteForce
 } client_t;
 
 //=============================================================================
