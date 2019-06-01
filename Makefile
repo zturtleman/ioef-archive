@@ -45,6 +45,8 @@ ifndef BUILD_MISSIONPACK
   BUILD_MISSIONPACK=
 endif
 
+BUILD_ELITEFORCE =
+
 ifneq ($(PLATFORM),darwin)
   BUILD_CLIENT_SMP = 0
 endif
@@ -135,6 +137,10 @@ ifndef USE_CODEC_VORBIS
 USE_CODEC_VORBIS=0
 endif
 
+ifndef USE_CODEC_MP3
+USE_CODEC_MP3=0
+endif
+
 ifndef USE_MUMBLE
 USE_MUMBLE=1
 endif
@@ -197,6 +203,10 @@ NSISDIR=misc/nsis
 SDLHDIR=$(MOUNT_DIR)/SDL12
 LIBSDIR=$(MOUNT_DIR)/libs
 
+ifeq ($(BUILD_ELITEFORCE),1)
+  CFLAGS += -DELITEFORCE
+endif
+
 bin_path=$(shell which $(1) 2> /dev/null)
 
 # We won't need this if we only build the server
@@ -221,7 +231,11 @@ ifneq ($(BUILD_CLIENT),0)
 endif
 
 # version info
-VERSION=1.36
+ifeq ($(BUILD_ELITEFORCE),1)
+  VERSION=1.38
+else
+  VERSION=1.36
+endif
 
 USE_SVN=
 ifeq ($(wildcard .svn),.svn)
@@ -291,6 +305,10 @@ ifneq (,$(findstring "$(PLATFORM)", "linux" "gnu_kfreebsd" "kfreebsd-gnu"))
     CLIENT_CFLAGS += -DUSE_CODEC_VORBIS
   endif
 
+  ifeq ($(USE_CODEC_MP3),1)
+    BASE_CFLAGS += -DUSE_CODEC_MP3=1
+  endif
+
   OPTIMIZEVM = -O3 -funroll-loops -fomit-frame-pointer
   OPTIMIZE = $(OPTIMIZEVM) -ffast-math
 
@@ -339,6 +357,7 @@ ifneq (,$(findstring "$(PLATFORM)", "linux" "gnu_kfreebsd" "kfreebsd-gnu"))
 
   THREAD_LIBS=-lpthread
   LIBS=-ldl -lm
+  LIBS += -L/emul/linux/x86/usr/lib
 
   CLIENT_LIBS=$(SDL_LIBS) -lGL
 
@@ -356,6 +375,10 @@ ifneq (,$(findstring "$(PLATFORM)", "linux" "gnu_kfreebsd" "kfreebsd-gnu"))
 
   ifeq ($(USE_CODEC_VORBIS),1)
     CLIENT_LIBS += -lvorbisfile -lvorbis -logg
+  endif
+
+  ifeq ($(USE_CODEC_MP3),1)
+    CLIENT_LDFLAGS += -lmad
   endif
 
   ifeq ($(USE_MUMBLE),1)
@@ -429,6 +452,10 @@ ifeq ($(PLATFORM),darwin)
     CLIENT_LIBS += -lvorbisfile -lvorbis -logg
   endif
 
+  ifeq ($(USE_CODEC_MP3),1)
+    BASE_CFLAGS += -DUSE_CODEC_MP3=1
+  endif
+
   BASE_CFLAGS += -D_THREAD_SAFE=1
 
   ifeq ($(USE_LOCAL_HEADERS),1)
@@ -455,8 +482,11 @@ ifeq ($(PLATFORM),darwin)
 
   NOTSHLIBCFLAGS=-mdynamic-no-pic
 
-  TOOLS_CFLAGS += -DMACOS_X
+  ifeq ($(USE_CODEC_MP3),1)
+    CLIENT_LDFLAGS += -lmad
+  endif
 
+  TOOLS_CFLAGS += -DMACOS_X
 else # ifeq darwin
 
 
@@ -498,6 +528,10 @@ ifeq ($(PLATFORM),mingw32)
 
   ifeq ($(USE_CODEC_VORBIS),1)
     CLIENT_CFLAGS += -DUSE_CODEC_VORBIS
+  endif
+
+  ifeq ($(USE_CODEC_MP3),1)
+    BASE_CFLAGS += -DUSE_CODEC_MP3=1
   endif
 
   ifeq ($(ARCH),x64)
@@ -544,6 +578,10 @@ ifeq ($(PLATFORM),mingw32)
 
   ifeq ($(USE_CODEC_VORBIS),1)
     CLIENT_LIBS += -lvorbisfile -lvorbis -logg
+  endif
+
+  ifeq ($(USE_CODEC_MP3),1)
+    CLIENT_LDFLAGS += -lmad
   endif
 
   ifeq ($(ARCH),x86)
@@ -624,6 +662,11 @@ ifeq ($(PLATFORM),freebsd)
     CLIENT_LIBS += -lvorbisfile -lvorbis -logg
   endif
 
+  ifeq ($(USE_CODEC_MP3),1)
+    CLIENT_CFLAGS += -DUSE_CODEC_MP3=1
+    CLIENT_LDFLAGS += -lmad
+  endif
+
   # cross-compiling tweaks
   ifeq ($(ARCH),i386)
     ifeq ($(CROSS_COMPILING),1)
@@ -636,6 +679,7 @@ ifeq ($(PLATFORM),freebsd)
     endif
   endif
 
+>>>>>>> .r2058
 else # ifeq freebsd
 
 #############################################################################
@@ -1355,6 +1399,7 @@ Q3OBJ = \
   $(B)/client/snd_codec.o \
   $(B)/client/snd_codec_wav.o \
   $(B)/client/snd_codec_ogg.o \
+  $(B)/client/snd_codec_mp3.o \
   \
   $(B)/client/qal.o \
   $(B)/client/snd_openal.o \
@@ -1678,6 +1723,7 @@ endif
 endif
 
 
+$(B)/client/snd_codec_mp3.o : $(CDIR)/snd_codec_mp3.c; $(DO_CC)
 
 #############################################################################
 # DEDICATED SERVER

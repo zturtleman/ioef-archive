@@ -97,7 +97,11 @@ void SV_GetChallenge(netadr_t from)
 #ifndef STANDALONE
 	// Drop the authorize stuff if this client is coming in via v6 as the auth server does not support ipv6.
 	// Drop also for addresses coming in on local LAN and for stand-alone games independent from id's assets.
+#ifdef ELITEFORCE
 	if(challenge->adr.type == NA_IP && !com_standalone->integer && !Sys_IsLANAddress(from))
+#else
+	if(challenge->adr.type == NA_IP && !com_standalone->integer && !Sys_IsLANAddress(from))
+#endif
 	{
 		// look up the authorize server's IP
 		if (svs.authorizeAddress.type == NA_BAD)
@@ -125,16 +129,23 @@ void SV_GetChallenge(netadr_t from)
 			Com_DPrintf( "authorize server timed out\n" );
 		else
 		{
-			// otherwise send their ip to the authorize server
+#ifndef ELITEFORCE
 			cvar_t	*fs;
 			char	game[1024];
+#endif
 
 			// If the client provided us with a client challenge, store it...
 			if(*clientChallenge)
 				challenge->clientChallenge = atoi(clientChallenge);
 			
 			Com_DPrintf( "sending getIpAuthorize for %s\n", NET_AdrToString( from ));
-		
+
+			// otherwise send their ip to the authorize server
+#ifdef ELITEFORCE
+			NET_OutOfBandPrint( NS_SERVER, svs.authorizeAddress,
+				"getIpAuthorize %i %i.%i.%i.%i ",  svs.challenges[i].challenge,
+				from.ip[0], from.ip[1], from.ip[2], from.ip[3] );
+#else
 			strcpy(game, BASEGAME);
 			fs = Cvar_Get ("fs_game", "", CVAR_INIT|CVAR_SYSTEMINFO );
 			if (fs && fs->string[0] != 0) {
@@ -146,7 +157,7 @@ void SV_GetChallenge(netadr_t from)
 			NET_OutOfBandPrint( NS_SERVER, svs.authorizeAddress,
 				"getIpAuthorize %i %i.%i.%i.%i %s 0 %s",  challenge->challenge,
 				from.ip[0], from.ip[1], from.ip[2], from.ip[3], game, sv_strictAuth->string );
-			
+#endif
 			return;
 		}
 	}
@@ -302,7 +313,12 @@ void SV_DirectConnect( netadr_t from ) {
 	Q_strncpyz( userinfo, Cmd_Argv(1), sizeof(userinfo) );
 
 	version = atoi( Info_ValueForKey( userinfo, "protocol" ) );
-	if ( version != com_protocol->integer ) {
+#ifdef ELITEFORCE
+	if(version != EFPROTOCOL_VERSION && version != com_protocol->integer)
+#else
+	if(version != com_protocol->integer)
+#endif
+	{
 		NET_OutOfBandPrint( NS_SERVER, from, "print\nServer uses protocol version %i (yours is %i).\n", com_protocol->integer, version );
 		Com_DPrintf ("    rejected connect from version %i\n", version);
 		return;
@@ -483,6 +499,7 @@ gotnewcl:
 	ent = SV_GentityNum( clientNum );
 	newcl->gentity = ent;
 
+
 	// save the challenge
 	newcl->challenge = challenge;
 
@@ -490,6 +507,15 @@ gotnewcl:
 	Netchan_Setup (NS_SERVER, &newcl->netchan , from, qport);
 	// init the netchan queue
 	newcl->netchan_end_queue = &newcl->netchan_start_queue;
+
+#ifdef ELITEFORCE
+	if(version == EFPROTOCOL_VERSION)
+	{
+		newcl->compat = qtrue;
+		newcl->netchan.compat = qtrue;
+	}
+#endif
+
 
 	// save the userinfo
 	Q_strncpyz( newcl->userinfo, userinfo, sizeof(newcl->userinfo) );
@@ -584,7 +610,12 @@ void SV_DropClient( client_t *drop, const char *reason ) {
 	VM_Call( gvm, GAME_CLIENT_DISCONNECT, drop - svs.clients );
 
 	// add the disconnect command
-	SV_SendServerCommand( drop, "disconnect \"%s\"", reason);
+#ifdef ELITEFORCE
+	if(drop->compat)
+		SV_SendServerCommand( drop, "disconnect %s", reason);
+	else
+#endif
+		SV_SendServerCommand( drop, "disconnect \"%s\"", reason);
 
 	if ( isBot ) {
 		SV_BotFreeClient( drop - svs.clients );
@@ -643,11 +674,23 @@ static void SV_SendClientGameState( client_t *client ) {
 	// gamestate message was not just sent, forcing a retransmit
 	client->gamestateMessageNum = client->netchan.outgoingSequence;
 
-	MSG_Init( &msg, msgBuffer, sizeof( msgBuffer ) );
+#ifdef ELITEFORCE
+	if(client->compat)
+		MSG_InitOOB(&msg, msgBuffer, sizeof( msgBuffer ) );
+	else
+#endif
+		MSG_Init( &msg, msgBuffer, sizeof( msgBuffer ) );
+
+#ifdef ELITEFORCE
+	msg.compat = client->compat;
+#endif
 
 	// NOTE, MRE: all server->client messages now acknowledge
 	// let the client know which reliable clientCommands we have received
-	MSG_WriteLong( &msg, client->lastClientCommand );
+#ifdef ELITEFORCE
+	if(!msg.compat)
+#endif
+		MSG_WriteLong( &msg, client->lastClientCommand );
 
 	// send any server commands waiting to be sent first.
 	// we have to do this cause we send the client->reliableSequence
@@ -679,9 +722,17 @@ static void SV_SendClientGameState( client_t *client ) {
 		MSG_WriteDeltaEntity( &msg, &nullstate, base, qtrue );
 	}
 
-	MSG_WriteByte( &msg, svc_EOF );
+#ifdef ELITEFORCE
+	if(msg.compat)
+		MSG_WriteByte(&msg, 0);
+	else
+#endif	
+		MSG_WriteByte( &msg, svc_EOF );
 
-	MSG_WriteLong( &msg, client - svs.clients);
+#ifdef ELITEFORCE
+	if(!msg.compat)
+#endif
+		MSG_WriteLong( &msg, client - svs.clients);
 
 	// write the checksum feed
 	MSG_WriteLong( &msg, sv.checksumFeed);
@@ -847,6 +898,9 @@ void SV_WriteDownloadToClient( client_t *cl , msg_t *msg )
 	int curindex;
 	int rate;
 	int blockspersnap;
+#ifndef ELITEFORCE
+	int missionPack = 0;
+#endif
 	int unreferenced = 1;
 	char errorMessage[1024];
 	char pakbuf[MAX_QPATH], *pakptr;
@@ -858,8 +912,10 @@ void SV_WriteDownloadToClient( client_t *cl , msg_t *msg )
 	if(!cl->download)
 	{
 		qboolean idPack = qfalse;
+		#ifndef ELITEFORCE
 		#ifndef STANDALONE
 		qboolean missionPack = qfalse;
+		#endif
 		#endif
 	
  		// Chop off filename extension.
@@ -889,8 +945,12 @@ void SV_WriteDownloadToClient( client_t *cl , msg_t *msg )
 						// now that we know the file is referenced,
 						// check whether it's legal to download it.
 #ifndef STANDALONE
+						#ifdef ELITEFORCE
+						idPack = FS_idPak(pakbuf, BASEGAME, NUM_ID_PAKS);
+						#else
 						missionPack = FS_idPak(pakbuf, BASETA, NUM_TA_PAKS);
 						idPack = missionPack;
+						#endif
 #endif
 						idPack = idPack || FS_idPak(pakbuf, BASEGAME, NUM_ID_PAKS);
 
@@ -914,6 +974,10 @@ void SV_WriteDownloadToClient( client_t *cl , msg_t *msg )
 				Com_sprintf(errorMessage, sizeof(errorMessage), "File \"%s\" is not referenced and cannot be downloaded.", cl->downloadName);
 			}
 			else if (idPack) {
+#ifdef ELITEFORCE
+				Com_Printf("clientDownload: %d : \"%s\" cannot download Raven pk3 files\n", (int) (cl - svs.clients), cl->downloadName);
+				Com_sprintf(errorMessage, sizeof(errorMessage), "Cannot autodownload Raven pk3 file \"%s\"", cl->downloadName);
+#else
 				Com_Printf("clientDownload: %d : \"%s\" cannot download id pk3 files\n", (int) (cl - svs.clients), cl->downloadName);
 #ifndef STANDALONE
 				if(missionPack)
@@ -926,6 +990,7 @@ void SV_WriteDownloadToClient( client_t *cl , msg_t *msg )
 				{
 					Com_sprintf(errorMessage, sizeof(errorMessage), "Cannot autodownload id pk3 file \"%s\"", cl->downloadName);
 				}
+#endif
 			}
 			else if ( !(sv_allowDownload->integer & DLF_ENABLE) ||
 				(sv_allowDownload->integer & DLF_NO_UDP) ) {
@@ -950,7 +1015,10 @@ void SV_WriteDownloadToClient( client_t *cl , msg_t *msg )
 			MSG_WriteByte( msg, svc_download );
 			MSG_WriteShort( msg, 0 ); // client is expecting block zero
 			MSG_WriteLong( msg, -1 ); // illegal file size
-			MSG_WriteString( msg, errorMessage );
+			#ifdef ELITEFORCE
+				if(!msg->compat)
+			#endif
+					MSG_WriteString( msg, errorMessage );
 
 			*cl->downloadName = 0;
 			
@@ -1180,21 +1248,28 @@ static void SV_VerifyPaks_f( client_t *cl ) {
 		// start at arg 2 ( skip serverId cl_paks )
 		nCurArg = 1;
 
-		pArg = Cmd_Argv(nCurArg++);
-		if(!pArg) {
-			bGood = qfalse;
-		}
-		else
+		#ifdef ELITEFORCE
+		if(!cl->compat)
 		{
-			// https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=475
-			// we may get incoming cp sequences from a previous checksumFeed, which we need to ignore
-			// since serverId is a frame count, it always goes up
-			if (atoi(pArg) < sv.checksumFeedServerId)
-			{
-				Com_DPrintf("ignoring outdated cp command from client %s\n", cl->name);
-				return;
+		#endif
+			pArg = Cmd_Argv(nCurArg++);
+			if(!pArg) {
+				bGood = qfalse;
 			}
+			else
+			{
+				// https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=475
+				// we may get incoming cp sequences from a previous checksumFeed, which we need to ignore
+				// since serverId is a frame count, it always goes up
+				if (atoi(pArg) < sv.checksumFeedServerId)
+				{
+					Com_DPrintf("ignoring outdated cp command from client %s\n", cl->name);
+					return;
+				}
+			}
+		#ifdef ELITEFORCE
 		}
+		#endif
 	
 		// we basically use this while loop to avoid using 'goto' :)
 		while (bGood) {
@@ -1593,7 +1668,10 @@ each of the backup packets.
 ==================
 */
 static void SV_UserMove( client_t *cl, msg_t *msg, qboolean delta ) {
-	int			i, key;
+	int			i;
+#ifndef ELITEFORCE
+	int			key;
+#endif
 	int			cmdCount;
 	usercmd_t	nullcmd;
 	usercmd_t	cmds[MAX_PACKET_USERCMDS];
@@ -1617,6 +1695,7 @@ static void SV_UserMove( client_t *cl, msg_t *msg, qboolean delta ) {
 		return;
 	}
 
+	#ifndef ELITEFORCE
 	// use the checksum feed in the key
 	key = sv.checksumFeed;
 	// also use the message acknowledge
@@ -1624,11 +1703,17 @@ static void SV_UserMove( client_t *cl, msg_t *msg, qboolean delta ) {
 	// also use the last acknowledged server command in the key
 	key ^= MSG_HashKey(cl->reliableCommands[ cl->reliableAcknowledge & (MAX_RELIABLE_COMMANDS-1) ], 32);
 
+	#endif
+
 	Com_Memset( &nullcmd, 0, sizeof(nullcmd) );
 	oldcmd = &nullcmd;
 	for ( i = 0 ; i < cmdCount ; i++ ) {
 		cmd = &cmds[i];
+		#ifdef ELITEFORCE
+		MSG_ReadDeltaUsercmd( msg, oldcmd, cmd );
+		#else
 		MSG_ReadDeltaUsercmdKey( msg, key, oldcmd, cmd );
+		#endif
 		oldcmd = cmd;
 	}
 
@@ -1820,7 +1905,10 @@ void SV_ExecuteClientMessage( client_t *cl, msg_t *msg ) {
 	int			c;
 	int			serverId;
 
-	MSG_Bitstream(msg);
+#ifdef ELITEFORCE
+	if(!msg->compat)
+		MSG_Bitstream(msg);
+#endif
 
 	serverId = MSG_ReadLong( msg );
 	cl->messageAcknowledge = MSG_ReadLong( msg );
@@ -1886,6 +1974,7 @@ void SV_ExecuteClientMessage( client_t *cl, msg_t *msg ) {
 	do {
 		c = MSG_ReadByte( msg );
 
+
 		// See if this is an extension command after the EOF, which means we
 		//  got data that a legacy server should ignore.
 		if ((c == clc_EOF) && (MSG_LookaheadByte( msg ) == clc_extension)) {
@@ -1898,9 +1987,12 @@ void SV_ExecuteClientMessage( client_t *cl, msg_t *msg ) {
 			}
 		}
 
-		if ( c == clc_EOF ) {
+		#ifdef ELITEFORCE
+		if(msg->compat && c == -1)
+			c = clc_EOF;
+		#endif
+		if ( c == clc_EOF )
 			break;
-		}
 
 		if ( c != clc_clientCommand ) {
 			break;
