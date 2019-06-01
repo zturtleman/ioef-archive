@@ -32,6 +32,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define	RF_THIRD_PERSON		2		// don't draw through eyes, only mirrors (player bodies, chat sprites)
 #define	RF_FIRST_PERSON		4		// only draw through eyes (view weapon, damage blood blob)
 #define	RF_DEPTHHACK		8		// for view weapon Z crunching
+#ifdef ELITEFORCE
+#define RF_FULLBRIGHT	0x0010
+#endif
 #define	RF_NOSHADOW			64		// don't add stencil shadows
 
 #define RF_LIGHTING_ORIGIN	128		// use refEntity->lightingOrigin instead of refEntity->origin
@@ -41,6 +44,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define	RF_SHADOW_PLANE		256		// use refEntity->shadowPlane
 #define	RF_WRAP_FRAMES		512		// mod the model frames by the maxframes to allow continuous
 									// animation without needing to know the frame count
+
+#ifdef ELITEFORCE
+#define RF_FORCE_ENT_ALPHA 0x0800		// override shader alpha value and take the one from the entity.
+#endif
 
 // refdef flags
 #define RDF_NOWORLDMODEL	1		// used for player configuration screen
@@ -58,6 +65,27 @@ typedef struct poly_s {
 	polyVert_t			*verts;
 } poly_t;
 
+#ifdef ELITEFORCE
+typedef enum {
+        RT_MODEL,
+        RT_SPRITE,
+        RT_ORIENTEDSPRITE,              // Replaces RT_POLY, which wasn't used. --Pat
+        RT_ALPHAVERTPOLY,               // Individual alpha levels on each vertex
+        RT_BEAM,
+        RT_RAIL_CORE,
+        RT_RAIL_RINGS,
+        RT_LIGHTNING,
+        RT_PORTALSURFACE,               // doesn't draw anything, just info for portals
+        RT_LINE,                                // New type for Trek MP --Pat
+        RT_ORIENTEDLINE,
+        RT_LINE2,                               // New line type for Trek MP, with taper support --Pat
+        RT_BEZIER,                              // what he said --keith
+        RT_CYLINDER,                    // Yet another Trek primitive!
+        RT_ELECTRICITY,                 // Yet another Trek primitive!
+
+        RT_MAX_REF_ENTITY_TYPE
+} refEntityType_t;
+#else
 typedef enum {
 	RT_MODEL,
 	RT_POLY,
@@ -70,6 +98,7 @@ typedef enum {
 
 	RT_MAX_REF_ENTITY_TYPE
 } refEntityType_t;
+#endif
 
 typedef struct {
 	refEntityType_t	reType;
@@ -102,8 +131,49 @@ typedef struct {
 	float		shaderTime;			// subtracted from refdef time to control effect start times
 
 	// extra sprite information
+#ifdef ELITEFORCE
+        union
+        {
+                struct
+                {
+                        float rotation;
+                        float radius;
+                        byte  vertRGBA[4][4];
+                } sprite;
+                struct
+                {
+                        float width;
+                        float width2;
+                        float stscale;
+                } line;
+                struct  // that whole put-the-opening-brace-on-the-same-line-as-the-beginning-of-the-definition coding style is fecal // I agree.
+                {
+                        float   width;
+                        vec3_t  control1;
+                        vec3_t  control2;
+                } bezier;
+                struct
+                {
+                        float width;
+                        float width2;
+                        float stscale;
+                        float height;
+                        float bias;
+                        qboolean wrap;
+                } cylinder;
+                struct
+                {
+                        float width;
+                        float deviation;
+                        float stscale;
+                        qboolean wrap;
+                        qboolean taper;
+                } electricity;
+        } data;
+#else
 	float		radius;
 	float		rotation;
+#endif
 } refEntity_t;
 
 
@@ -124,8 +194,10 @@ typedef struct {
 	// 1 bits will prevent the associated area from rendering at all
 	byte		areamask[MAX_MAP_AREA_BYTES];
 
+#ifndef ELITEFORCE
 	// text messages for deform text shaders
 	char		text[MAX_RENDER_STRINGS][MAX_RENDER_STRING_LENGTH];
+#endif
 } refdef_t;
 
 
@@ -145,7 +217,10 @@ typedef enum {
 */
 typedef enum {
 	TC_NONE,
-	TC_S3TC
+	TC_S3TC,
+#ifdef ELITEFORCE
+	TC_S3TC_DXT
+#endif
 } textureCompression_t;
 
 typedef enum {
@@ -172,7 +247,11 @@ typedef struct {
 	char					renderer_string[MAX_STRING_CHARS];
 	char					vendor_string[MAX_STRING_CHARS];
 	char					version_string[MAX_STRING_CHARS];
+#ifdef ELITEFORCE
+	char					extensions_string[2*MAX_STRING_CHARS];
+#else
 	char					extensions_string[BIG_INFO_STRING];
+#endif
 
 	int						maxTextureSize;			// queried from GL
 	int						numTextureUnits;		// multitexture ability
@@ -185,6 +264,9 @@ typedef struct {
 	qboolean				deviceSupportsGamma;
 	textureCompression_t	textureCompression;
 	qboolean				textureEnvAddAvailable;
+#ifdef ELITEFORCE
+	qboolean				textureFilterAnisotropicAvailable;
+#endif
 
 	int						vidWidth, vidHeight;
 	// aspect is the screen's physical width / height, which may be different

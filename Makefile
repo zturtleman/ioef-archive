@@ -28,6 +28,7 @@ BUILD_CLIENT_SMP =
 BUILD_SERVER     =
 BUILD_GAME_SO    =
 BUILD_GAME_QVM   =
+BUILD_ELITEFORCE =
 
 ifneq ($(PLATFORM),darwin)
   BUILD_CLIENT_SMP = 0
@@ -108,6 +109,10 @@ ifndef USE_CODEC_VORBIS
 USE_CODEC_VORBIS=0
 endif
 
+ifndef USE_CODEC_MP3
+USE_CODEC_MP3=0
+endif
+
 ifndef USE_LOCAL_HEADERS
 USE_LOCAL_HEADERS=1
 endif
@@ -140,18 +145,29 @@ SDLHDIR=$(MOUNT_DIR)/SDL12
 LIBSDIR=$(MOUNT_DIR)/libs
 TEMPDIR=/tmp
 
-# extract version info
-VERSION=$(shell grep "\#define *PRODUCT_VERSION" $(CMDIR)/q_shared.h | \
-  sed -e 's/[^"]*"\(.*\)"/\1/')
+ifeq ($(BUILD_ELITEFORCE),1)
+  # extract version info
+  CFLAGS += -DELITEFORCE
+  VERSION=$(shell grep "\#define *PRODUCT_VERSION" $(CMDIR)/q_shared.h | \
+    sed -e 's/[^"]*"\(.*\)"/\1/')
+
+  USE_SVN=0
+
+else
+
+  VERSION=$(shell grep "\#define *PRODUCT_VERSION" $(CMDIR)/q_shared.h | \
+    sed -e 's/[^"]*"\(.*\)"/\1/')
 
 USE_SVN=
-ifeq ($(wildcard .svn),.svn)
-  SVN_REV=$(shell LANG=C svnversion .)
-  ifneq ($(SVN_REV),)
-    SVN_VERSION=$(VERSION)_SVN$(SVN_REV)
-    USE_SVN=1
+  ifeq ($(wildcard .svn),.svn)
+    SVN_REV=$(shell LANG=C svnversion .)
+    ifneq ($(SVN_REV),)
+      SVN_VERSION=$(VERSION)_SVN$(SVN_REV)
+      USE_SVN=1
+    endif
   endif
 endif
+
 ifneq ($(USE_SVN),1)
     SVN_VERSION=$(VERSION)
 endif
@@ -206,6 +222,10 @@ ifeq ($(PLATFORM),linux)
     BASE_CFLAGS += -DUSE_CODEC_VORBIS
   endif
 
+  ifeq ($(USE_CODEC_MP3),1)
+    BASE_CFLAGS += -DUSE_CODEC_MP3=1
+  endif
+
   OPTIMIZE = -O3 -ffast-math -funroll-loops -fomit-frame-pointer
 
   ifeq ($(ARCH),x86_64)
@@ -237,7 +257,8 @@ ifeq ($(PLATFORM),linux)
   SHLIBLDFLAGS=-shared $(LDFLAGS)
 
   THREAD_LDFLAGS=-lpthread
-  LDFLAGS=-ldl -lm
+  LDFLAGS=-ldl -lm 
+  LDFLAGS += -L/emul/linux/x86/usr/lib
 
   CLIENT_LDFLAGS=$(shell sdl-config --libs) -lGL
 
@@ -257,6 +278,10 @@ ifeq ($(PLATFORM),linux)
     CLIENT_LDFLAGS += -lvorbisfile -lvorbis -logg
   endif
 
+  ifeq ($(USE_CODEC_MP3),1)
+    CLIENT_LDFLAGS += -lmad
+  endif
+
   ifeq ($(ARCH),i386)
     # linux32 make ...
     BASE_CFLAGS += -m32
@@ -268,7 +293,7 @@ ifeq ($(PLATFORM),linux)
   endif
   endif
 
-  DEBUG_CFLAGS = $(BASE_CFLAGS) -g -O0
+  DEBUG_CFLAGS = $(BASE_CFLAGS) -ggdb3 -O0
   RELEASE_CFLAGS=$(BASE_CFLAGS) -DNDEBUG $(OPTIMIZE)
 
 else # ifeq Linux
@@ -358,6 +383,10 @@ ifeq ($(PLATFORM),darwin)
     CLIENT_LDFLAGS += -lvorbisfile -lvorbis -logg
   endif
 
+  ifeq ($(USE_CODEC_MP3),1)
+    BASE_CFLAGS += -DUSE_CODEC_MP3=1
+  endif
+
   BASE_CFLAGS += -D_THREAD_SAFE=1
 
   ifeq ($(USE_LOCAL_HEADERS),1)
@@ -387,8 +416,11 @@ ifeq ($(PLATFORM),darwin)
 
   NOTSHLIBCFLAGS=-mdynamic-no-pic
 
-  TOOLS_CFLAGS += -DMACOS_X
+  ifeq ($(USE_CODEC_MP3),1)
+    CLIENT_LDFLAGS += -lmad
+  endif
 
+  TOOLS_CFLAGS += -DMACOS_X
 else # ifeq darwin
 
 
@@ -426,6 +458,10 @@ endif
     BASE_CFLAGS += -DUSE_CODEC_VORBIS
   endif
 
+  ifeq ($(USE_CODEC_MP3),1)
+    BASE_CFLAGS += -DUSE_CODEC_MP3=1
+  endif
+
   OPTIMIZE = -O3 -march=i586 -fno-omit-frame-pointer -ffast-math \
     -falign-loops=2 -funroll-loops -falign-jumps=2 -falign-functions=2 \
     -fstrength-reduce
@@ -449,6 +485,10 @@ endif
 
   ifeq ($(USE_CODEC_VORBIS),1)
     CLIENT_LDFLAGS += -lvorbisfile -lvorbis -logg
+  endif
+
+  ifeq ($(USE_CODEC_MP3),1)
+    CLIENT_LDFLAGS += -lmad
   endif
 
   ifeq ($(ARCH),x86)
@@ -496,6 +536,10 @@ ifeq ($(PLATFORM),freebsd)
     BASE_CFLAGS += -DUSE_CODEC_VORBIS
   endif
 
+  ifeq ($(USE_CODEC_MP3),1)
+    BASE_CFLAGS += -DUSE_CODEC_MP3=1
+  endif
+
   ifeq ($(ARCH),axp)
     BASE_CFLAGS += -DNO_VM_COMPILED
     RELEASE_CFLAGS=$(BASE_CFLAGS) -DNDEBUG -O3 -ffast-math -funroll-loops \
@@ -536,6 +580,9 @@ ifeq ($(PLATFORM),freebsd)
     CLIENT_LDFLAGS += -lvorbisfile -lvorbis -logg
   endif
 
+  ifeq ($(USE_CODEC_MP3),1)
+    CLIENT_LDFLAGS += -lmad
+  endif
 
 else # ifeq freebsd
 
@@ -1098,6 +1145,7 @@ Q3OBJ = \
   $(B)/client/snd_codec.o \
   $(B)/client/snd_codec_wav.o \
   $(B)/client/snd_codec_ogg.o \
+  $(B)/client/snd_codec_mp3.o \
   \
   $(B)/client/qal.o \
   $(B)/client/snd_openal.o \
@@ -1282,6 +1330,7 @@ endif
 endif
 
 
+$(B)/client/snd_codec_mp3.o : $(CDIR)/snd_codec_mp3.c; $(DO_CC)
 
 #############################################################################
 # DEDICATED SERVER
