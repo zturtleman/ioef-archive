@@ -105,6 +105,9 @@ void S_CodecInit()
 #if USE_CODEC_VORBIS
 	S_CodecRegister(&ogg_codec);
 #endif
+#if USE_CODEC_MP3
+	S_CodecRegister(&mp3_codec);
+#endif
 }
 
 /*
@@ -133,22 +136,111 @@ void S_CodecRegister(snd_codec_t *codec)
 S_CodecLoad
 =================
 */
-void *S_CodecLoad(const char *filename, snd_info_t *info)
-{
-	snd_codec_t *codec;
-	char fn[MAX_QPATH];
 
-	codec = S_FindCodecForFile(filename);
-	if(!codec)
+#ifdef ELITEFORCE
+qboolean S_EFCheckExtension(char *filename)
+{
+	fileHandle_t hnd;
+	char fn[MAX_QPATH];
+	int stringlen = strlen(filename);
+	char *extptr;
+	
+	strncpy(fn, filename, stringlen+1);
+	extptr = strrchr(fn, '.');
+
+	if(!extptr)
 	{
-		Com_Printf("Unknown extension for %s\n", filename);
-		return NULL;
+		extptr = &fn[stringlen];
+		
+		extptr[0] = '.';
+		extptr[1] = 'w';
+		extptr[2] = 'a';
+		extptr[3] = 'v';
+		extptr[4] = '\0';
+		
+		stringlen += 4;
+	}
+	
+	FS_FOpenFileRead(fn, &hnd, qtrue);
+
+	if(!hnd)
+	{
+		if(!strcmp(++extptr, "wav"))
+		{
+			extptr[0] = 'm';
+			extptr[1] = 'p';
+			extptr[2] = '3';
+
+			FS_FOpenFileRead(fn, &hnd, qtrue);
+			
+			if(!hnd)
+				return qfalse;
+		}
+		else
+			return qfalse;
+	}
+	
+	FS_FCloseFile(hnd);
+	strcpy(filename, fn);
+
+	return qtrue;
+}
+
+qboolean S_EFGetFileName(char *filename)
+{
+	char fn[MAX_QPATH];
+	qboolean dschoermen = qfalse;
+
+	if(!Q_stricmp(Cvar_VariableString("s_language"), "DEUTSCH"))
+		dschoermen = qtrue;
+
+	strncpy(fn, filename, sizeof(fn) - 10);
+
+	if(dschoermen && strstr(filename, "sound/voice") == filename)
+	{
+		fn[8] = 'x';
+		fn[9] = '_';
+		fn[10] = 'd';
+	
+		if(S_EFCheckExtension(fn))
+		{
+			strcpy(filename, fn);
+			return qtrue;
+		}
 	}
 
-	strncpy(fn, filename, sizeof(fn));
-	COM_DefaultExtension(fn, sizeof(fn), codec->ext);
+	if(S_EFCheckExtension(filename))
+		return qtrue;
+	
+	return qfalse;
+}
+#endif
 
-	return codec->load(fn, info);
+void *S_CodecLoad(const char *filename, snd_info_t *info)
+{
+        snd_codec_t *codec;
+        char fn[MAX_QPATH];
+
+#ifdef ELITEFORCE
+	strncpy(fn, filename, sizeof(fn));
+	if(!S_EFGetFileName(fn))
+		return NULL;
+        codec = S_FindCodecForFile(fn);
+#else
+        codec = S_FindCodecForFile(filename);
+#endif
+        if(!codec)
+        {
+                Com_Printf("Unknown extension for %s\n", filename);
+                return NULL;
+        }
+
+#ifndef ELITEFORCE
+        strncpy(fn, filename, sizeof(fn));
+        COM_DefaultExtension(fn, sizeof(fn), codec->ext);
+#endif
+
+        return codec->load(fn, info);
 }
 
 /*
