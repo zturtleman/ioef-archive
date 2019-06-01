@@ -219,6 +219,10 @@ typedef struct {
 	int			timeDemoStart;		// cls.realtime before first frame
 	int			timeDemoBaseTime;	// each frame will be at this time + frameNum * 50
 
+#ifdef ELITEFORCE
+        qboolean	compat;		// Compatibility mode for old EliteForce servers.
+#endif
+
 	// big stuff at end of structure so most offsets are 15 bits or less
 	netchan_t	netchan;
 } clientConnection_t;
@@ -495,6 +499,9 @@ void	SCR_DrawNamedPic( float x, float y, float width, float height, const char *
 
 void	SCR_DrawBigString( int x, int y, const char *s, float alpha );			// draws a string with embedded color control characters with fade
 void	SCR_DrawBigStringColor( int x, int y, const char *s, vec4_t color );	// ignores embedded color control characters
+#ifdef ELITEFORCE
+void	SCR_DrawSmallString( int x, int y, const char *s, float alpha );	// draws a string with embedded color control characters with fade
+#endif
 void	SCR_DrawSmallStringExt( int x, int y, const char *string, float *setColor, qboolean forceColor );
 void	SCR_DrawSmallChar( int x, int y, int ch );
 

@@ -311,7 +311,11 @@ char	*Sys_DefaultHomePath(void) {
 		return NULL;
 	}
 	Q_strncpyz( path, szPath, sizeof(path) );
+#ifdef ELITEFORCE
+	Q_strcat( path, sizeof(path), "\\STVEF" );
+#else
 	Q_strcat( path, sizeof(path), "\\Quake3" );
+#endif
 	FreeLibrary(shfolder);
 	if( !CreateDirectory( path, NULL ) )
 	{

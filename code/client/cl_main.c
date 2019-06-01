@@ -291,14 +291,24 @@ void CL_Record_f( void ) {
 	if ( Cmd_Argc() == 2 ) {
 		s = Cmd_Argv(1);
 		Q_strncpyz( demoName, s, sizeof( demoName ) );
-		Com_sprintf (name, sizeof(name), "demos/%s.dm_%d", demoName, PROTOCOL_VERSION );
+#ifdef ELITEFORCE
+		if(clc.compat)
+			Com_sprintf (name, sizeof(name), "demos/%s.efdemo", demoName);
+		else
+#endif
+			Com_sprintf (name, sizeof(name), "demos/%s.dm_%d", demoName, PROTOCOL_VERSION );
 	} else {
 		int		number;
 
 		// scan for a free demo name
 		for ( number = 0 ; number <= 9999 ; number++ ) {
 			CL_DemoFilename( number, demoName );
-			Com_sprintf (name, sizeof(name), "demos/%s.dm_%d", demoName, PROTOCOL_VERSION );
+			#ifdef ELITEFORCE
+			if(clc.compat)
+				Com_sprintf (name, sizeof(name), "demos/%s.efdemo", demoName);
+			else
+			#endif
+				Com_sprintf (name, sizeof(name), "demos/%s.dm_%d", demoName, PROTOCOL_VERSION );
 
 			if (!FS_FileExists(name))
 				break;	// file doesn't exist
@@ -327,11 +337,23 @@ void CL_Record_f( void ) {
 	clc.demowaiting = qtrue;
 
 	// write out the gamestate message
-	MSG_Init (&buf, bufData, sizeof(bufData));
-	MSG_Bitstream(&buf);
+	#ifdef ELITEFORCE
+	if(clc.compat)
+	{
+		MSG_InitOOB(&buf, bufData, sizeof(bufData));
+		buf.compat = qtrue;
+	}
+	else
+	{
+	#endif
+		MSG_Init (&buf, bufData, sizeof(bufData));
+		MSG_Bitstream(&buf);
 
-	// NOTE, MRE: all server->client messages now acknowledge
-	MSG_WriteLong( &buf, clc.reliableSequence );
+		// NOTE, MRE: all server->client messages now acknowledge
+		MSG_WriteLong( &buf, clc.reliableSequence );
+	#ifdef ELITEFORCE
+	}
+	#endif
 
 	MSG_WriteByte (&buf, svc_gamestate);
 	MSG_WriteLong (&buf, clc.serverCommandSequence );
@@ -358,17 +380,30 @@ void CL_Record_f( void ) {
 		MSG_WriteDeltaEntity (&buf, &nullstate, ent, qtrue );
 	}
 
-	MSG_WriteByte( &buf, svc_EOF );
+	#ifdef ELITEFORCE
+	if(buf.compat)
+		MSG_WriteByte(&buf, 0);
+	else
+	#endif
+		MSG_WriteByte( &buf, svc_EOF );
 	
 	// finished writing the gamestate stuff
 
-	// write the client num
-	MSG_WriteLong(&buf, clc.clientNum);
-	// write the checksum feed
-	MSG_WriteLong(&buf, clc.checksumFeed);
+	#ifdef ELITEFORCE
+	if(!buf.compat)
+	{
+	#endif
+		// write the client num
+		MSG_WriteLong(&buf, clc.clientNum);
 
-	// finished writing the client packet
-	MSG_WriteByte( &buf, svc_EOF );
+		// write the checksum feed
+		MSG_WriteLong(&buf, clc.checksumFeed);
+
+		// finished writing the client packet
+		MSG_WriteByte( &buf, svc_EOF );
+	#ifdef ELITEFORCE
+	}
+	#endif
 
 	// write it to the demo file
 	len = LittleLong( clc.serverMessageSequence - 1 );
@@ -434,7 +469,15 @@ void CL_ReadDemoMessage( void ) {
 	clc.serverMessageSequence = LittleLong( s );
 
 	// init the message
-	MSG_Init( &buf, bufData, sizeof( bufData ) );
+	#ifdef ELITEFORCE
+	if(clc.compat)
+	{
+		MSG_InitOOB(&buf, bufData, sizeof(bufData));
+		buf.compat = qtrue;
+	}
+	else
+	#endif
+		MSG_Init( &buf, bufData, sizeof( bufData ) );
 
 	// get the length
 	r = FS_Read (&buf.cursize, 4, clc.demofile);
@@ -467,10 +510,26 @@ void CL_ReadDemoMessage( void ) {
 CL_WalkDemoExt
 ====================
 */
+#ifdef ELITEFORCE
+static void CL_WalkDemoExt(char *arg, char *name, int *demofile, qboolean *compat)
+#else
 static void CL_WalkDemoExt(char *arg, char *name, int *demofile)
+#endif
 {
 	int i = 0;
 	*demofile = 0;
+	
+	#ifdef ELITEFORCE
+	Com_sprintf(name, MAX_OSPATH, "demos/%s.efdemo", arg);
+	FS_FOpenFileRead(name, demofile, qtrue);
+	if(*demofile)
+	{
+		Com_Printf("Demo file: %s\n", name);
+		*compat = qtrue;
+		return;
+	}
+	#endif
+	
 	while(demo_protocols[i])
 	{
 		Com_sprintf (name, MAX_OSPATH, "demos/%s.dm_%d", arg, demo_protocols[i]);
@@ -499,6 +558,9 @@ void CL_PlayDemo_f( void ) {
 	char		*arg, *ext_test;
 	int			protocol, i;
 	char		retry[MAX_OSPATH];
+	#ifdef ELITEFORCE
+	qboolean compat = qfalse;	// For demos using the old EF protocol.
+	#endif
 
 	if (Cmd_Argc() != 2) {
 		Com_Printf ("playdemo <demoname>\n");
@@ -513,31 +575,52 @@ void CL_PlayDemo_f( void ) {
 	// open the demo file
 	arg = Cmd_Argv(1);
 	
-	// check for an extension .dm_?? (?? is protocol)
-	ext_test = arg + strlen(arg) - 6;
-	if ((strlen(arg) > 6) && (ext_test[0] == '.') && ((ext_test[1] == 'd') || (ext_test[1] == 'D')) && ((ext_test[2] == 'm') || (ext_test[2] == 'M')) && (ext_test[3] == '_'))
+#ifdef ELITEFORCE
+	ext_test = arg + strlen(arg) - 7;
+	if(!strcmp(ext_test, ".efdemo"))
 	{
-		protocol = atoi(ext_test+4);
-		i=0;
-		while(demo_protocols[i])
-		{
-			if (demo_protocols[i] == protocol)
-				break;
-			i++;
-		}
-		if (demo_protocols[i])
-		{
-			Com_sprintf (name, sizeof(name), "demos/%s", arg);
-			FS_FOpenFileRead( name, &clc.demofile, qtrue );
-		} else {
-			Com_Printf("Protocol %d not supported for demos\n", protocol);
-			Q_strncpyz(retry, arg, sizeof(retry));
-			retry[strlen(retry)-6] = 0;
-			CL_WalkDemoExt( retry, name, &clc.demofile );
-		}
-	} else {
-		CL_WalkDemoExt( arg, name, &clc.demofile );
+		Com_sprintf (name, sizeof(name), "demos/%s", arg);
+		FS_FOpenFileRead(name, &clc.demofile, qtrue);
+		compat = qtrue;
 	}
+	else
+	{
+#endif
+		// check for an extension .dm_?? (?? is protocol)
+		ext_test = arg + strlen(arg) - 6;
+		if ((strlen(arg) > 6) && (ext_test[0] == '.') && ((ext_test[1] == 'd') || (ext_test[1] == 'D')) && ((ext_test[2] == 'm') || (ext_test[2] == 'M')) && (ext_test[3] == '_'))
+		{
+			protocol = atoi(ext_test+4);
+			i=0;
+			while(demo_protocols[i])
+			{
+				if (demo_protocols[i] == protocol)
+					break;
+				i++;
+			}
+			if (demo_protocols[i])
+			{
+				Com_sprintf (name, sizeof(name), "demos/%s", arg);
+				FS_FOpenFileRead( name, &clc.demofile, qtrue );
+			} else {
+				Com_Printf("Protocol %d not supported for demos\n", protocol);
+				Q_strncpyz(retry, arg, sizeof(retry));
+				retry[strlen(retry)-6] = 0;
+				#ifdef ELITEFORCE
+				CL_WalkDemoExt(retry, name, &clc.demofile, &compat);
+				#else
+				CL_WalkDemoExt( retry, name, &clc.demofile );
+				#endif
+			}
+		} else {
+#ifdef ELITEFORCE
+			CL_WalkDemoExt(arg, name, &clc.demofile, &compat);
+		}
+	}
+#else
+			CL_WalkDemoExt( arg, name, &clc.demofile );
+		}
+#endif
 	
 	if (!clc.demofile) {
 		Com_Error( ERR_DROP, "couldn't open %s", name);
@@ -549,6 +632,11 @@ void CL_PlayDemo_f( void ) {
 
 	cls.state = CA_CONNECTED;
 	clc.demoplaying = qtrue;
+
+	#ifdef ELITEFORCE
+	clc.compat = compat;
+	#endif
+
 	Q_strncpyz( cls.servername, Cmd_Argv(1), sizeof( cls.servername ) );
 
 	// read demo messages until connected
@@ -1168,7 +1256,10 @@ void CL_SendPureChecksums( void ) {
 	// "cp"
 	// "Yf"
 	Com_sprintf(cMsg, sizeof(cMsg), "Yf ");
-	Q_strcat(cMsg, sizeof(cMsg), va("%d ", cl.serverId) );
+#ifdef ELITEFORCE
+	if(!clc.compat)
+#endif	
+		Q_strcat(cMsg, sizeof(cMsg), va("%d ", cl.serverId) );
 	Q_strcat(cMsg, sizeof(cMsg), pChecksums);
 	for (i = 0; i < 2; i++) {
 		cMsg[i] += 10;
@@ -1542,20 +1633,20 @@ void CL_InitDownloads(void) {
                   "Go to the setting menu to turn on autodownload, or get the file elsewhere\n\n", missingfiles );
     }
   }
-  else if ( FS_ComparePaks( clc.downloadList, sizeof( clc.downloadList ) , qtrue ) ) {
+  else if ( FS_ComparePaks( clc.downloadList, sizeof( clc.downloadList ) , qtrue ) )
+  {
+  	Com_Printf("Need paks: %s\n", clc.downloadList );
 
-    Com_Printf("Need paks: %s\n", clc.downloadList );
-
-		if ( *clc.downloadList ) {
-			// if autodownloading is not enabled on the server
-			cls.state = CA_CONNECTED;
-			CL_NextDownload();
-			return;
-		}
-
+	if ( *clc.downloadList )
+	{
+		// if autodownloading is not enabled on the server
+		cls.state = CA_CONNECTED;
+		CL_NextDownload();
+		return;
 	}
-		
-	CL_DownloadsComplete();
+  }
+
+  CL_DownloadsComplete();
 }
 
 /*
@@ -1602,7 +1693,12 @@ void CL_CheckForResend( void ) {
 		port = Cvar_VariableValue ("net_qport");
 
 		Q_strncpyz( info, Cvar_InfoString( CVAR_USERINFO ), sizeof( info ) );
-		Info_SetValueForKey( info, "protocol", va("%i", PROTOCOL_VERSION ) );
+		#ifdef ELITEFORCE
+		if(clc.compat)
+			Info_SetValueForKey( info, "protocol", va("%i", EFPROTOCOL_VERSION ) );
+		else
+		#endif
+			Info_SetValueForKey( info, "protocol", va("%i", PROTOCOL_VERSION ) );
 		Info_SetValueForKey( info, "qport", va("%i", port ) );
 		Info_SetValueForKey( info, "challenge", va("%i", clc.challenge ) );
 		
@@ -1618,7 +1714,11 @@ void CL_CheckForResend( void ) {
 		data[10+i] = 0;
 
     // NOTE TTimo don't forget to set the right data length!
-		NET_OutOfBandData( NS_CLIENT, clc.serverAddress, (byte *) &data[0], i+10 );
+    		#ifdef ELITEFORCE
+			NET_OutOfBandPrint( NS_CLIENT, clc.serverAddress, (byte *) &data[0]);
+		#else
+			NET_OutOfBandData( NS_CLIENT, clc.serverAddress, (byte *) &data[0], i+10 );
+		#endif
 		// the most current userinfo has been sent, so watch for any
 		// newer changes to userinfo variables
 		cvar_modifiedFlags &= ~CVAR_USERINFO;
@@ -1728,6 +1828,9 @@ void CL_ServersResponsePacket( netadr_t from, msg_t *msg ) {
 	int				numservers;
 	byte*			buffptr;
 	byte*			buffend;
+	#ifdef ELITEFORCE
+	char strbyte[3] = "FF";
+	#endif
 	
 	Com_Printf("CL_ServersResponsePacket\n");
 
@@ -1757,6 +1860,21 @@ void CL_ServersResponsePacket( netadr_t from, msg_t *msg ) {
 			break;
 		}
 
+#ifdef ELITEFORCE
+		// EliteForce uses a slightly different format with bytes encoded
+		// in hex values.
+		for(i = 0; i < 6; i++)
+		{
+			strbyte[0] = toupper(*buffptr++);
+			strbyte[1] = toupper(*buffptr++);
+
+			if(i < 4)
+				addresses[numservers].ip[i] = strtoul(strbyte, NULL, 16);
+			else
+				((unsigned char *) &addresses[numservers].port)[i - 4] =
+					strtoul(strbyte, NULL, 16);
+		}
+#else
 		// parse out ip
 		addresses[numservers].ip[0] = *buffptr++;
 		addresses[numservers].ip[1] = *buffptr++;
@@ -1767,7 +1885,7 @@ void CL_ServersResponsePacket( netadr_t from, msg_t *msg ) {
 		addresses[numservers].port = (*buffptr++)<<8;
 		addresses[numservers].port += *buffptr++;
 		addresses[numservers].port = BigShort( addresses[numservers].port );
-
+#endif
 		// syntax check
 		if (*buffptr != '\\') {
 			break;
@@ -1791,6 +1909,10 @@ void CL_ServersResponsePacket( netadr_t from, msg_t *msg ) {
 		}
 	}
 
+	#ifdef ELITEFORCE
+	count = cls.numglobalservers;
+	max = MAX_GLOBAL_SERVERS;
+	#else
 	if (cls.masterNum == 0) {
 		count = cls.numglobalservers;
 		max = MAX_GLOBAL_SERVERS;
@@ -1798,10 +1920,15 @@ void CL_ServersResponsePacket( netadr_t from, msg_t *msg ) {
 		count = cls.nummplayerservers;
 		max = MAX_OTHER_SERVERS;
 	}
+	#endif
 
 	for (i = 0; i < numservers && count < max; i++) {
 		// build net address
+		#ifdef ELITEFORCE
+		serverInfo_t *server = &cls.globalServers[count];
+		#else
 		serverInfo_t *server = (cls.masterNum == 0) ? &cls.globalServers[count] : &cls.mplayerServers[count];
+		#endif
 
 		CL_InitServerInfo( server, &addresses[i] );
 		// advance to next slot
@@ -1809,7 +1936,9 @@ void CL_ServersResponsePacket( netadr_t from, msg_t *msg ) {
 	}
 
 	// if getting the global list
+#ifndef ELITEFORCE
 	if (cls.masterNum == 0) {
+#endif
 		if ( cls.numGlobalServerAddresses < MAX_GLOBAL_SERVERS ) {
 			// if we couldn't store the servers in the main list anymore
 			for (; i < numservers && count >= max; i++) {
@@ -1823,15 +1952,21 @@ void CL_ServersResponsePacket( netadr_t from, msg_t *msg ) {
 				addr->port  = addresses[i].port;
 			}
 		}
+#ifndef ELITEFORCE
 	}
+#endif
 
+#ifndef ELITEFORCE
 	if (cls.masterNum == 0) {
+#endif
 		cls.numglobalservers = count;
 		total = count + cls.numGlobalServerAddresses;
+#ifndef ELITEFORCE
 	} else {
 		cls.nummplayerservers = count;
 		total = count;
 	}
+#endif
 
 	Com_Printf("%d servers parsed (total %d)\n", numservers, total);
 }
@@ -1894,6 +2029,9 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 			return;
 		}
 		Netchan_Setup (NS_CLIENT, &clc.netchan, from, Cvar_VariableValue( "net_qport" ) );
+		#ifdef ELITEFORCE
+		clc.netchan.compat = clc.compat;
+		#endif
 		cls.state = CA_CONNECTED;
 		clc.lastPacketSentTime = -9999;		// send first packet immediately
 		return;
@@ -1939,8 +2077,20 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 	// echo request from server
 	if ( !Q_stricmp(c, "print") ) {
 		s = MSG_ReadString( msg );
-		Q_strncpyz( clc.serverMessage, s, sizeof( clc.serverMessage ) );
-		Com_Printf( "%s", s );
+		#ifdef ELITEFORCE
+		if(!Q_strncmp(s, "Server uses protocol version 24.\n", 33))
+		{
+			clc.compat = qtrue;
+			cls.state = CA_CONNECTING;
+		}
+		else
+		{
+		#endif
+			Q_strncpyz( clc.serverMessage, s, sizeof( clc.serverMessage ) );
+			Com_Printf( "%s", s );
+		#ifdef ELITEFORCE
+		}
+		#endif
 		return;
 	}
 
@@ -1965,7 +2115,10 @@ void CL_PacketEvent( netadr_t from, msg_t *msg ) {
 	int		headerBytes;
 
 	clc.lastPacketTime = cls.realtime;
-
+	#ifdef ELITEFORCE
+	msg->compat = clc.compat;
+	#endif
+	
 	if ( msg->cursize >= 4 && *(int *)msg->data == -1 ) {
 		CL_ConnectionlessPacket( from, msg );
 		return;
@@ -2267,7 +2420,11 @@ void CL_InitRenderer( void ) {
 	re.BeginRegistration( &cls.glconfig );
 
 	// load character sets
+#ifdef ELITEFORCE
+	cls.charSetShader = re.RegisterShaderNoMip( "gfx/2d/charsgrid_med" );
+#else
 	cls.charSetShader = re.RegisterShader( "gfx/2d/bigchars" );
+#endif
 	cls.whiteShader = re.RegisterShader( "white" );
 	cls.consoleShader = re.RegisterShader( "console" );
 	g_console_field_width = cls.glconfig.vidWidth / SMALLCHAR_WIDTH - 2;
@@ -2548,7 +2705,11 @@ void CL_Init( void ) {
 	cl_pitchspeed = Cvar_Get ("cl_pitchspeed", "140", CVAR_ARCHIVE);
 	cl_anglespeedkey = Cvar_Get ("cl_anglespeedkey", "1.5", 0);
 
+#ifdef ELITEFORCE
+	cl_maxpackets = Cvar_Get ("cl_maxpackets", "43", CVAR_ARCHIVE );
+#else
 	cl_maxpackets = Cvar_Get ("cl_maxpackets", "30", CVAR_ARCHIVE );
+#endif
 	cl_packetdup = Cvar_Get ("cl_packetdup", "1", CVAR_ARCHIVE );
 
 	cl_run = Cvar_Get ("cl_run", "1", CVAR_ARCHIVE);
@@ -2599,12 +2760,14 @@ void CL_Init( void ) {
 	Cvar_Get ("name", "UnnamedPlayer", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get ("rate", "3000", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get ("snaps", "20", CVAR_USERINFO | CVAR_ARCHIVE );
-	Cvar_Get ("model", "sarge", CVAR_USERINFO | CVAR_ARCHIVE );
-	Cvar_Get ("headmodel", "sarge", CVAR_USERINFO | CVAR_ARCHIVE );
+	Cvar_Get ("model", "munro/red", CVAR_USERINFO | CVAR_ARCHIVE );
+	#ifndef ELITEFORCE
+	Cvar_Get ("headmodel", "munro", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get ("team_model", "james", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get ("team_headmodel", "*james", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get ("g_redTeam", "Stroggs", CVAR_SERVERINFO | CVAR_ARCHIVE);
 	Cvar_Get ("g_blueTeam", "Pagans", CVAR_SERVERINFO | CVAR_ARCHIVE);
+	#endif
 	Cvar_Get ("color1",  "4", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get ("color2", "5", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get ("handicap", "100", CVAR_USERINFO | CVAR_ARCHIVE );
@@ -2614,7 +2777,6 @@ void CL_Init( void ) {
 
 	Cvar_Get ("password", "", CVAR_USERINFO);
 	Cvar_Get ("cg_predictItems", "1", CVAR_USERINFO | CVAR_ARCHIVE );
-
 
 	// cgame might not be initialized before menu is used
 	Cvar_Get ("cg_viewsize", "100", CVAR_ARCHIVE );
@@ -2780,11 +2942,28 @@ void CL_ServerInfoPacket( netadr_t from, msg_t *msg ) {
 	char	*infoString;
 	int		prot;
 
+#ifdef ELITEFORCE
+	// eliteforce doesn't send a \n after infoResponse..
+	infoString = strchr(msg->data, '"');
+	if(!infoString)
+		return;
+	msg->readcount = (int) ((byte *) ++infoString - msg->data);
+	msg->bit = msg->readcount << 3;
+	// find the second " character and empty it.
+	infoString = strchr(infoString, '"');
+	if(infoString)
+		*infoString = '\0';
+#endif
+
 	infoString = MSG_ReadString( msg );
 
 	// if this isn't the correct protocol version, ignore it
 	prot = atoi( Info_ValueForKey( infoString, "protocol" ) );
+#ifdef ELITEFORCE
+	if ( prot != PROTOCOL_VERSION && prot != EFPROTOCOL_VERSION ) {
+#else
 	if ( prot != PROTOCOL_VERSION ) {
+#endif
 		Com_DPrintf( "Different protocol info packet: %s\n", infoString );
 		return;
 	}
@@ -2822,7 +3001,11 @@ void CL_ServerInfoPacket( netadr_t from, msg_t *msg ) {
 					type = 0;
 					break;
 			}
+#ifdef ELITEFORCE
+			Info_SetValueForKey( cl_pinglist[i].info, "nettype", str );
+#else
 			Info_SetValueForKey( cl_pinglist[i].info, "nettype", va("%d", type) );
+#endif
 			CL_SetServerInfoByAddress(from, infoString, cl_pinglist[i].time);
 
 			return;
@@ -3122,9 +3305,16 @@ void CL_GlobalServers_f( void ) {
 	int			count;
 	char		*buffptr;
 	char		command[1024];
+	#ifdef ELITEFORCE
+	char *msname;
+	#endif
 	
 	if ( Cmd_Argc() < 3) {
+		#ifdef ELITEFORCE
+		Com_Printf( "usage: globalservers <master# 0-4> <protocol> [keywords]\n");
+		#else
 		Com_Printf( "usage: globalservers <master# 0-1> <protocol> [keywords]\n");
+		#endif
 		return;	
 	}
 
@@ -3135,18 +3325,47 @@ void CL_GlobalServers_f( void ) {
 	// reset the list, waiting for response
 	// -1 is used to distinguish a "no response"
 
+
+	#ifdef ELITEFORCE
+
+	switch(cls.masterNum)
+	{
+		case 0: msname = Cvar_VariableString("sv_master1");
+		break;
+		case 1: msname = Cvar_VariableString("sv_master2");
+		break;
+		case 2: msname = Cvar_VariableString("sv_master3");
+		break;
+		case 3: msname = Cvar_VariableString("sv_master4");
+		break;
+		case 4: msname = Cvar_VariableString("sv_master5");
+		break;
+		default: msname = MASTER_SERVER_NAME;
+		break;
+	}
+	
+	NET_StringToAdr(msname, &to);
+		
+	if(!strchr(msname, ':'))
+		to.port = BigShort(PORT_MASTER);
+		
+	#else
+	NET_StringToAdr( MASTER_SERVER_NAME, &to );
+
 	if( cls.masterNum == 1 ) {
-		NET_StringToAdr( MASTER_SERVER_NAME, &to );
 		cls.nummplayerservers = -1;
 		cls.pingUpdateSource = AS_MPLAYER;
 	}
 	else {
-		NET_StringToAdr( MASTER_SERVER_NAME, &to );
+	#endif
 		cls.numglobalservers = -1;
 		cls.pingUpdateSource = AS_GLOBAL;
+	#ifndef ELITEFORCE
 	}
-	to.type = NA_IP;
 	to.port = BigShort(PORT_MASTER);
+	#endif
+	to.type = NA_IP;
+
 
 	sprintf( command, "getservers %s", Cmd_Argv(2) );
 
