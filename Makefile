@@ -45,6 +45,8 @@ ifndef BUILD_MISSIONPACK
   BUILD_MISSIONPACK=
 endif
 
+BUILD_ELITEFORCE =
+
 ifneq ($(PLATFORM),darwin)
   BUILD_CLIENT_SMP = 0
 endif
@@ -131,6 +133,10 @@ ifndef USE_CODEC_VORBIS
 USE_CODEC_VORBIS=0
 endif
 
+ifndef USE_CODEC_MP3
+USE_CODEC_MP3=0
+endif
+
 ifndef USE_MUMBLE
 USE_MUMBLE=1
 endif
@@ -177,6 +183,10 @@ SDLHDIR=$(MOUNT_DIR)/SDL12
 LIBSDIR=$(MOUNT_DIR)/libs
 TEMPDIR=/tmp
 
+ifeq ($(BUILD_ELITEFORCE),1)
+  CFLAGS += -DELITEFORCE
+endif
+
 # set PKG_CONFIG_PATH to influence this, e.g.
 # PKG_CONFIG_PATH=/opt/cross/i386-mingw32msvc/lib/pkgconfig
 ifeq ($(shell which pkg-config > /dev/null; echo $$?),0)
@@ -197,7 +207,11 @@ ifeq ($(SDL_CFLAGS),)
 endif
 
 # version info
-VERSION=1.36
+ifeq ($(BUILD_ELITEFORCE),1)
+  VERSION=1.38
+else
+  VERSION=1.36
+endif
 
 USE_SVN=
 ifeq ($(wildcard .svn),.svn)
@@ -265,6 +279,10 @@ ifeq ($(PLATFORM),linux)
     BASE_CFLAGS += -DUSE_CODEC_VORBIS
   endif
 
+  ifeq ($(USE_CODEC_MP3),1)
+    BASE_CFLAGS += -DUSE_CODEC_MP3=1
+  endif
+
   OPTIMIZE = -O3 -ffast-math -funroll-loops -fomit-frame-pointer
 
   ifeq ($(ARCH),x86_64)
@@ -305,6 +323,7 @@ ifeq ($(PLATFORM),linux)
 
   THREAD_LIBS=-lpthread
   LIBS=-ldl -lm
+  LIBS += -L/emul/linux/x86/usr/lib
 
   CLIENT_LIBS=$(SDL_LIBS) -lGL
 
@@ -324,6 +343,10 @@ ifeq ($(PLATFORM),linux)
     CLIENT_LIBS += -lvorbisfile -lvorbis -logg
   endif
 
+  ifeq ($(USE_CODEC_MP3),1)
+    CLIENT_LDFLAGS += -lmad
+  endif
+
   ifeq ($(USE_MUMBLE),1)
     CLIENT_LIBS += -lrt
   endif
@@ -341,7 +364,7 @@ ifeq ($(USE_LOCAL_HEADERS),1)
   endif
   endif
 
-  DEBUG_CFLAGS = $(BASE_CFLAGS) -g -O0
+  DEBUG_CFLAGS = $(BASE_CFLAGS) -ggdb3 -O0
   RELEASE_CFLAGS=$(BASE_CFLAGS) -DNDEBUG $(OPTIMIZE)
 
 else # ifeq Linux
@@ -396,6 +419,10 @@ ifeq ($(PLATFORM),darwin)
     CLIENT_LIBS += -lvorbisfile -lvorbis -logg
   endif
 
+  ifeq ($(USE_CODEC_MP3),1)
+    BASE_CFLAGS += -DUSE_CODEC_MP3=1
+  endif
+
   BASE_CFLAGS += -D_THREAD_SAFE=1
 
   ifeq ($(USE_LOCAL_HEADERS),1)
@@ -425,8 +452,11 @@ ifeq ($(PLATFORM),darwin)
 
   NOTSHLIBCFLAGS=-mdynamic-no-pic
 
-  TOOLS_CFLAGS += -DMACOS_X
+  ifeq ($(USE_CODEC_MP3),1)
+    CLIENT_LDFLAGS += -lmad
+  endif
 
+  TOOLS_CFLAGS += -DMACOS_X
 else # ifeq darwin
 
 
@@ -464,6 +494,10 @@ ifeq ($(PLATFORM),mingw32)
     BASE_CFLAGS += -DUSE_CODEC_VORBIS
   endif
 
+  ifeq ($(USE_CODEC_MP3),1)
+    BASE_CFLAGS += -DUSE_CODEC_MP3=1
+  endif
+
   OPTIMIZE = -O3 -march=i586 -fno-omit-frame-pointer -ffast-math \
     -falign-loops=2 -funroll-loops -falign-jumps=2 -falign-functions=2 \
     -fstrength-reduce
@@ -495,6 +529,10 @@ ifeq ($(PLATFORM),mingw32)
 
   ifeq ($(USE_CODEC_VORBIS),1)
     CLIENT_LIBS += -lvorbisfile -lvorbis -logg
+  endif
+
+  ifeq ($(USE_CODEC_MP3),1)
+    CLIENT_LDFLAGS += -lmad
   endif
 
   ifeq ($(ARCH),x86)
@@ -549,6 +587,10 @@ ifeq ($(PLATFORM),freebsd)
     BASE_CFLAGS += -DUSE_CODEC_VORBIS
   endif
 
+  ifeq ($(USE_CODEC_MP3),1)
+    BASE_CFLAGS += -DUSE_CODEC_MP3=1
+  endif
+
   ifeq ($(ARCH),axp)
     BASE_CFLAGS += -DNO_VM_COMPILED
     RELEASE_CFLAGS=$(BASE_CFLAGS) -DNDEBUG -O3 -ffast-math -funroll-loops \
@@ -587,6 +629,10 @@ ifeq ($(PLATFORM),freebsd)
 
   ifeq ($(USE_CODEC_VORBIS),1)
     CLIENT_LIBS += -lvorbisfile -lvorbis -logg
+  endif
+
+  ifeq ($(USE_CODEC_MP3),1)
+    CLIENT_LDFLAGS += -lmad
   endif
 
 else # ifeq freebsd
@@ -1257,6 +1303,7 @@ Q3OBJ = \
   $(B)/client/snd_codec.o \
   $(B)/client/snd_codec_wav.o \
   $(B)/client/snd_codec_ogg.o \
+  $(B)/client/snd_codec_mp3.o \
   \
   $(B)/client/qal.o \
   $(B)/client/snd_openal.o \
@@ -1507,6 +1554,7 @@ endif
 endif
 
 
+$(B)/client/snd_codec_mp3.o : $(CDIR)/snd_codec_mp3.c; $(DO_CC)
 
 #############################################################################
 # DEDICATED SERVER

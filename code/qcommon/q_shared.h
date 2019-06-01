@@ -33,10 +33,17 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
   #define CLIENT_WINDOW_MIN_TITLE 	"changeme2"
   #define GAMENAME_FOR_MASTER		"iofoo3"	// must NOT contain whitespaces
 #else
-  #define PRODUCT_NAME			"ioq3"
-  #define BASEGAME			"baseq3"
-  #define CLIENT_WINDOW_TITLE     	"ioquake3"
-  #define CLIENT_WINDOW_MIN_TITLE 	"ioq3"
+  #ifdef ELITEFORCE
+    #define PRODUCT_NAME		"ioST:V HM"
+    #define BASEGAME			"baseEF"
+    #define CLIENT_WINDOW_TITLE     	"iostvoyHM"
+    #define CLIENT_WINDOW_MIN_TITLE 	"iostvoyHM"
+  #else
+    #define PRODUCT_NAME		"ioq3"
+    #define BASEGAME			"baseq3"
+    #define CLIENT_WINDOW_TITLE     	"ioquake3"
+    #define CLIENT_WINDOW_MIN_TITLE 	"ioq3"
+  #endif
   #define GAMENAME_FOR_MASTER		"Quake3Arena"
 #endif
 
@@ -984,7 +991,11 @@ typedef struct {
 #define	MAX_POWERUPS			16
 #define	MAX_WEAPONS				16		
 
+#ifdef ELITEFORCE
+#define MAX_PS_EVENTS			4
+#else
 #define	MAX_PS_EVENTS			2
+#endif
 
 #define PS_PMOVEFRAMECOUNTBITS	6
 
@@ -1008,6 +1019,11 @@ typedef struct playerState_s {
 	vec3_t		origin;
 	vec3_t		velocity;
 	int			weaponTime;
+#ifdef ELITEFORCE
+        int                     rechargeTime;           // for the phaser
+        short           useTime;                        // use debounce
+        int                     introTime;                      // for the holodoor
+#endif
 	int			gravity;
 	int			speed;
 	int			delta_angles[3];	// add to command angles to get view direction
@@ -1026,7 +1042,9 @@ typedef struct playerState_s {
 								// when at rest, the value will remain unchanged
 								// used to twist the legs during strafing
 
+#ifndef ELITEFORCE
 	vec3_t		grapplePoint;	// location of grapple to pull towards if PMF_GRAPPLE_PULL
+#endif
 
 	int			eFlags;			// copied to entityState_t->eFlags
 
@@ -1050,20 +1068,27 @@ typedef struct playerState_s {
 	int			damageYaw;
 	int			damagePitch;
 	int			damageCount;
+#ifdef ELITEFORCE
+	int			damageShieldCount;
+#endif
 
 	int			stats[MAX_STATS];
 	int			persistant[MAX_PERSISTANT];	// stats that aren't cleared on death
 	int			powerups[MAX_POWERUPS];	// level.time that the powerup runs out
 	int			ammo[MAX_WEAPONS];
 
+#ifndef ELITEFORCE
 	int			generic1;
 	int			loopSound;
 	int			jumppad_ent;	// jumppad entity hit this frame
+#endif
 
 	// not communicated over the net at all
 	int			ping;			// server to game info for scoreboard
+#ifndef ELITEFORCE
 	int			pmove_framecount;	// FIXME: don't transmit over the network
 	int			jumppad_frame;
+#endif
 	int			entityEventSequence;
 } playerState_t;
 
@@ -1098,6 +1123,15 @@ typedef struct playerState_s {
 										// then BUTTON_WALKING should be set
 
 // usercmd_t is sent to the server each client frame
+#ifdef ELITEFORCE
+typedef struct usercmd_s {
+        int             serverTime;
+        byte    buttons;
+        byte    weapon;
+        int             angles[3];
+        signed char     forwardmove, rightmove, upmove;
+} usercmd_t;
+#else
 typedef struct usercmd_s {
 	int				serverTime;
 	int				angles[3];
@@ -1105,7 +1139,7 @@ typedef struct usercmd_s {
 	byte			weapon;           // weapon 
 	signed char	forwardmove, rightmove, upmove;
 } usercmd_t;
-
+#endif
 //===================================================================
 
 // if entityState->solid == SOLID_BMODEL, modelindex is an inline model number
@@ -1176,7 +1210,9 @@ typedef struct entityState_s {
 	int		legsAnim;		// mask off ANIM_TOGGLEBIT
 	int		torsoAnim;		// mask off ANIM_TOGGLEBIT
 
+#ifndef ELITEFORCE
 	int		generic1;
+#endif
 } entityState_t;
 
 typedef enum {

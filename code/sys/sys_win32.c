@@ -75,8 +75,12 @@ char *Sys_DefaultHomePath( void )
 			return NULL;
 		}
 		Q_strncpyz( homePath, szPath, sizeof( homePath ) );
-		Q_strcat( homePath, sizeof( homePath ), "\\Quake3" );
-		FreeLibrary(shfolder);
+#ifdef ELITEFORCE
+		Q_strcat( homePath, sizeof(homePath), "\\STVEF" );
+#else
+		Q_strcat( homePath, sizeof(homePath), "\\Quake3" );
+#endif
+                FreeLibrary(shfolder);
 		if( !CreateDirectory( homePath, NULL ) )
 		{
 			if( GetLastError() != ERROR_ALREADY_EXISTS )

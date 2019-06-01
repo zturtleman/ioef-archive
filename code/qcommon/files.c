@@ -174,6 +174,15 @@ or configs will never get loaded from disk!
 
 // every time a new demo pk3 file is built, this checksum must be updated.
 // the easiest way to get it is to just run the game and see what it spits out
+#ifdef ELITEFORCE
+static const unsigned pak_checksums[] =
+{
+	3376297517u,
+	596947475u,
+	3960871590u,
+	1592359207u,
+};
+#else
 #define	DEMO_PAK0_CHECKSUM	2985612116u
 static const unsigned pak_checksums[] = {
 	1566731103u,
@@ -186,6 +195,7 @@ static const unsigned pak_checksums[] = {
 	908855077u,
 	977125798u
 };
+#endif
 
 // if this is defined, the executable positively won't work with any paks other
 // than the demo pak, even if productid is present.  This is only used for our
@@ -2575,9 +2585,14 @@ qboolean FS_ComparePaks( char *neededpaks, int len, qboolean dlstring ) {
 		havepak = qfalse;
 
 		// never autodownload any of the id paks
+#ifdef ELITEFORCE
+		if(FS_idPak(fs_serverReferencedPakNames[i], BASEGAME))
+			continue;
+#else
 		if ( FS_idPak(fs_serverReferencedPakNames[i], BASEGAME) || FS_idPak(fs_serverReferencedPakNames[i], "missionpack") ) {
 			continue;
 		}
+#endif
 
 		// Make sure the server cannot make us write to non-quake3 directories.
 		if(FS_CheckDirTraversal(fs_serverReferencedPakNames[i]))
@@ -2845,6 +2860,7 @@ static void FS_Startup( const char *gameName )
 }
 
 #ifndef STANDALONE
+#ifdef ELITEFORCE
 /*
 ===================
 FS_CheckPak0
@@ -2854,6 +2870,84 @@ Note: If you're building a game that doesn't depend on the
 Q3 media pak0.pk3, you'll want to remove this function
 ===================
 */
+
+static void FS_CheckPak0( void )
+{
+	searchpath_t	*path;
+	unsigned foundPak = 0;
+
+	for( path = fs_searchpaths; path; path = path->next )
+	{
+		const char* pakBasename = path->pack->pakBasename;
+
+		if(!path->pack)
+			continue;
+
+		if(!Q_stricmpn(path->pack->pakGamename, BASEGAME, MAX_OSPATH)
+		   && strlen(pakBasename) == 4 && !Q_stricmpn(pakBasename, "pak", 3)
+		   && pakBasename[3] >= '0' && pakBasename[3] <= '4')
+		{
+			if(path->pack->checksum != pak_checksums[pakBasename[3]-'0'])
+			{
+				if(pakBasename[0] == '0')
+				{
+					Com_Printf("\n\n"
+						"**************************************************\n"
+						"WARNING: pak0.pk3 is present but its checksum (%u)\n"
+						"is not correct. Please re-copy pak0.pk3 from your\n"
+						"legitimate EF CDROM.\n"
+						"**************************************************\n\n\n",
+						path->pack->checksum);
+				}
+				else
+				{
+					Com_Printf("\n\n"
+						"**************************************************\n"
+						"WARNING: pak%d.pk3 is present but its checksum (%u)\n"
+						"is not correct. Please copy the .pk3 files from\n"
+						"Elite Force patches 1.1 and 1.2 to the baseEF directory.\n"
+						"**************************************************\n\n\n",
+						pakBasename[3]-'0', path->pack->checksum );
+				}
+			}
+
+			foundPak |= 1<<(pakBasename[3]-'0');
+		}
+	}
+
+	if((foundPak & 0x07) != 0x07)
+	{
+		if(!(foundPak & 1))
+		{
+			Com_Printf("\n\n"
+			"pak0.pk3 is missing. Please copy it\n"
+			"from your legitimate EliteForce CDROM.\n");
+		}
+
+		if((foundPak & 0x06) != 0x06)
+		{
+			Com_Printf("\n\n"
+			"Patch files are missing. Please\n"
+			"copy the .pk3 files from EliteForce patch 1.2 to baseEF.\n");
+		}
+		Com_Printf("\n\n"
+			"Also check that your EliteForce executable is in\n"
+			"the correct place and that every file\n"
+			"in the %s directory is present and readable.\n", BASEGAME);
+	}
+}
+
+#else
+/*
+===================
+FS_CheckPak0
+
+Checks that pak0.pk3 is present and its checksum is correct
+Note: If you're building a game that doesn't depend on the
+Q3 media pak0.pk3, you'll want to remove this function
+===================
+*/
+
 static void FS_CheckPak0( void )
 {
 	searchpath_t	*path;
@@ -2871,7 +2965,6 @@ static void FS_CheckPak0( void )
 		   && !Q_stricmpn( pakBasename, "pak0", MAX_OSPATH ))
 		{
 			founddemo = qtrue;
-
 			if( path->pack->checksum == DEMO_PAK0_CHECKSUM )
 			{
 				Com_Printf( "\n\n"
@@ -2891,6 +2984,7 @@ static void FS_CheckPak0( void )
 			{
 				if(pakBasename[0] == '0')
 				{
+
 					Com_Printf("\n\n"
 						"**************************************************\n"
 						"WARNING: pak0.pk3 is present but its checksum (%u)\n"
@@ -2934,7 +3028,6 @@ static void FS_CheckPak0( void )
 			"Point Release files are missing. Please\n"
 			"re-install the 1.32 point release.\n");
 		}
-
 		Com_Printf("\n\n"
 			"Also check that your Q3 executable is in\n"
 			"the correct place and that every file\n"
@@ -2946,6 +3039,7 @@ static void FS_CheckPak0( void )
 	if(foundPak & 1)
 		Cvar_Set("com_standalone", "0");
 }
+#endif
 #endif
 
 /*
@@ -3499,4 +3593,5 @@ void	FS_FilenameCompletion( const char *dir, const char *ext,
 		callback( filename );
 	}
 	FS_FreeFileList( filenames );
+
 }

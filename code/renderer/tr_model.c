@@ -157,7 +157,9 @@ qhandle_t RE_RegisterModel( const char *name ) {
 		filesize = ri.FS_ReadFile(name, (void **) &buf.v);
 		if(!buf.u)
 		{
+			#ifdef _DEBUG
 			ri.Printf (PRINT_WARNING,"RE_RegisterModel: couldn't load %s\n", name);
+			#endif
 			mod->type = MOD_BAD;
 			return 0;
 		}
