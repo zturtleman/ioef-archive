@@ -152,7 +152,7 @@ typedef unsigned int UINT16;
 /* INT32 must hold at least signed 32-bit values. */
 
 /* MinGW basetsd.h defines INT32 - don't redefine it */
-#if !(defined __MINGW32__ && defined _BASETSD_H)
+#if !(defined __MINGW32__ && (defined _BASETSD_H || defined _BASETSD_H_))
 typedef long INT32;
 #endif
 
