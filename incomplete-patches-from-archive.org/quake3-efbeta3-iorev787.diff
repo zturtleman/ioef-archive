@@ -1,0 +1,4399 @@
+Index: README
+===================================================================
+--- README	(revision 787)
++++ README	(working copy)
+@@ -82,6 +82,7 @@
+   USE_OPENAL        - use OpenAL where available
+   USE_OPENAL_DLOPEN - link with OpenAL at runtime
+   USE_CODEC_VORBIS  - enable Ogg Vorbis support
++  USE_CODEC_MP3     - enable MP3 support. Requires libmad to be installed.
+   USE_LOCAL_HEADERS - use headers local to ioq3 instead of system ones
+   USE_CCACHE        - use ccache compiler caching tool
+   COPYDIR           - the target installation directory
+Index: README-EF.txt
+===================================================================
+--- README-EF.txt	(revision 0)
++++ README-EF.txt	(revision 0)
+@@ -0,0 +1,263 @@
++README for StarTrek Voyager - Elite Force engine release
++   - last updated 18.05.2006
++
++This project is a modification to the icculus.org maintained quake3 engine
++to make it possible to run EliteForce holomatch. This means: you can *not*
++play single player missions with this project.
++This engine has full compatibility for the newer _and_ the original
++EliteForce protocol, clients using the original engine can use
++newer servers, and clients using my engine can use old servers, too.
++
++Now, the next few paragraphs are just some random blabla about the
++advantages of this release, but if you want to you can just skip it and go
++right to the installation instructions.
++
++What was the motivation for me doing this project?
++It actually started pretty small.. The Quake3 source has been released more
++than half a year ago and I got the crazy idea to try the quake3 engine with
++EliteForce on my trusted Gentoo Linux.
++When I started the program first the screen went black and nothing
++happened... nearly nothing. I heard some sounds and when I moved the cursor
++I heard random click-clicks from the mouse going over some menu buttons.
++This meant this stuff is not completely incompatible after all, it didn't
++crash right away though that was exactly what I expected it to do.
++I digged in Raven's multiplayer source that they released (only the virtual
++machine stuff, to allow for building modifications) and compared it to
++quake3's virtual machines and realized that there was a small
++incompatibility in one of the data structures used to pass information
++between engine and virtual machine. It was nothing big and after fixing this
++the menu worked!
++There were some quirks here or there, but most of the menu really worked.
++So it got me thinking: If I fix all these incompatibilities.. maybe I can
++finally play my beloved multiplayer game I've been clinging to for over 5
++years on my favorite OS natively.. and IPv6 support for EliteForce would be
++pretty cool too...
++So a crazy idea was turned into a serious project. I had to add support for
++Raven's models, playing mp3s, EliteForce's own network protocol. My goal was
++to make this release as close to the original as possible. Most of the time,
++I only could guess what names and functions would mean to the engine or I
++had to compare the original game and then try to make it work the same way
++in my engine.
++
++The quake3 game relies heavily on floating point operations. Unfortunately,
++the original EliteForce engine does non-ISO compliant rounding of floating
++point numbers to integers in the VMs.
++The game VM uses that flaw which will result in higher jumping for certain
++com_maxfps settings. As with the new engine there are many platforms that
++can be supported, there are probably many different ways one has to take to
++revert the rounding to the old behaviour. This is nearly impossible to do,
++so I had to use a different approach: build new VMs.
++
++############################
++### GENERAL INSTRUCTIONS ###
++############################
++
++All player and server admins, no matter whether old or new EliteForce engine
++should download the pak9.pk3 from
++http://thilo.kickchat.com/efport-progress/bin/vm/
++and copy the pak file to their baseEF directories.
++Dedicated servers using my engine will yield a greatly impaired movement if
++this pak file is not installed.
++This pak only fixes a few obvious bugs but otherwise doesn't change gameplay
++at all.
++Modders please read information about this further below.
++
++#########################################
++### WINDOWS INSTALLATION INSTRUCTIONS ###
++#########################################
++
++Installing this on windows is pretty straightforward.
++If you don't have it already on your harddrive, you can install EliteForce
++using the normal installer. You must also install either the expansion pack
++or the official patch to upgrade your installation to version 1.2.
++
++Once you have done all this, you can just copy the engine from this project
++to your main eliteforce installation directory where Raven's original
++stvoyHM.exe file resides.
++You can get the new engine here:
++http://thilo.kickchat.com/efport-progress/bin/win32/
++
++You may have also noticed an OpenAL installer in the same directory. OpenAL
++is a portable library that provides 3d sound functions. This one is even EAX
++enabled (though I'm not sure whether the engine actually makes of the EAX
++extensions).
++If you want to, you can install OpenAL on your computer too, but it's not
++required.
++Keep in mind, that OpenAL support is still somewhat experimental.
++Sound quality can be different, unusual or even be worse with OpenAL. If you
++don't like it, you can always turn off OpenAL support by setting the
++s_useOpenAL cvar to 0.
++
++#######################################
++### LINUX INSTALLATION INSTRUCTIONS ###
++#######################################
++
++Prerequisites:
++ * A working hardware accelerated OpenGL setup (DRI or fireglx or nvidia-glx...)
++ * libSDL - SDL libraries
++ * libmad - (MPEG Audio Decoder, also known as MAD sometimes.)
++Optional:
++ * OpenAL - OpenAL sound libraries
++
++You can fullfill these dependencies by installing the correct packages from
++your favorite distribution's packet manager.
++
++Create a new eliteforce directory, you will probably want to use a dir like:
++/usr/local/games/eliteforce
++
++Copy a build of this engine that you can get from
++http://thilo.kickchat.com/efport-progress/bin/
++into the new directory.
++Also copy any directories from MODs you installed previously on windows to
++this directory.
++
++Create a subdirectory named "baseEF" (case sensitive!!) and copy the
++pak0.pk3, pak1.pk3 and pak2.pk3 from the original eliteforce
++release in there.
++pak1.pk3 and pak2.pk3 are files that have been released after the game went
++gold. You must either get them by installing the latest official EF patch on
++windows or you can get them from the expansion pack cd.
++pak3.pk3 can only be found on the expansion pack CD. If you want to have the
++maps and additions from the expension pack, you must copy this file as well.
++
++If you have an old hmconfig.cfg from windows, don't add it to baseef but to
++your home directory in ~/.stvef/baseEF/
++Speaking of that dir, the hidden directory where user specific config
++files/maps/mods will be stored is - as you may have guessed by now -
++.stvef in your home directory.
++
++########################
++### For MOD creators ###
++########################
++
++I spoke about modifications necessary to get the old movement.
++Unfortunately, you will have to do these modifications to your mods too if
++you want your mod to run on my dedicated server version and don't want the
++users to get too frustrated over slowness.
++
++The problem is in the SnapVector macro located in q_shared.h:
++It uses casting a float to int using the (int) cast. The ISO standard
++requires the decimal places to be cut off and the number truncated. Thus,
++3,4 is converted to 3 or 5,9 is converted to 5.
++This is what happens in my engine.
++In EliteForce though, a 5,9 will be converted to 6 which is not standard
++compliant and will ultimately result in faster movement. This - among other
++factors - is the cause for framerate dependent jumping out of tranches, etc.
++What one could see as flaw many players now have learnt to rely upon.
++
++I have started a codebase where all modders can start from that fixes some
++known bugs and the movement so that everything works like in the original
++EF. Even if you have already changed much code, there is a way you can
++quickly insert the changes into your MOD, too. I created sourcecode patches
++that take care of the bugs.
++
++At this time, there are already a couple of bugfixes that have been added to
++the codebase. For instance, bots can now join password protected servers,
++the demo selection menu now has scrollbars (thanks to TiM). A more complete
++list can be found here:
++http://svn.kickchat.com/index.cgi/stvoy/trunk/ChangeLog?view=log
++
++The patch can be found here:
++http://thilo.kickchat.com/efport-progress/patches/stvoyVM-bugfixes-beta3.diff
++You can also check out my source code on
++http://svn.kickchat.com/index.cgi/stvoy/trunk/
++
++The patch can be applied using the "patch" tool under Linux. For Windows,
++I recommend that you install TortoiseSVN which is an excellent tool for
++accessing subversion projects. It has also got the ability to create and
++merge patches:
++http://tortoisesvn.tigris.org/
++
++Quick instructions for Windows users to integrate my improvements into your
++mod:
++
++- Check out the repository at revision 1:
++  svn co svn://kickchat.com/stvoy/trunk stvoy
++- Copy and overwrite all files in that newly checked out directory.
++  Make sure the .svn directories are left intact.
++- Create a patch using the TortoiseSVN context menu in Windows Explorer. The
++  patch should then contain all modifications you did to Raven's original
++  VMs.
++- Check out the same repository into a new directory, but this time the
++  latest revision (HEAD).
++- Apply the patch you created to the new dir using TortoiseSVN.
++  If you're lucky and didn't change too much, everything will work fine. If
++  you're unlucky, there will be conflicts that you have to resolve manually.
++  For that you need to go into the conflicted files with an editor and
++  search for the string "mine". It will first show you your version, then
++  the one from the repository. Try to integrate these changes into your MOD.
++- Build!
++
++That's pretty much all you have to do. If you see that there are more
++bugfixes included in my repository at a later time, you can use TortoiseSVN
++to upgrade to this version. All changes are automatically merged into your
++mod.
++
++########################################################################
++## For Engine fiddlers and Gentoo-I-compile-everything-myself-freaks ###
++########################################################################
++
++Since icculus.org's quake3 engine is GPL'ed, all my modifications are freely
++available in the form of patches.
++
++a) You must get a recent revision of ioquake3
++   - see http://www.icculus.org/quake3
++
++b) Download the most recent patch that modifies the code
++   - see http://thilo.kickchat.com/efport-progress/patches/
++
++c) Apply the patch
++   - Linux users do: patch -p0 < thepatchname.diff in the main sourcedir
++   - Windows users must install seperate tools like TortoiseSVN that have
++     the ability to apply unix-style patches.
++
++Linux users:
++d) Make sure you got all packages needed, especially the -dev packages.
++   You need the header files for libmad, libSDL, libopenal and libGL
++   
++e) You may need to edit the Makefile to make use of a gcc version < 4.
++   gcc 4.0.x is not advisable if you need stability.
++
++f) Type in "make eliteforce-debug" for a version with debugging symbols or
++   "make eliteforce" for a release version. If all goes well, the new
++   binaries will be found in the build/ subdir.
++
++Windows users (will take a bit longer, experienced coders only):
++d) Open up the project (project files can be found in code\win32\msvc\)
++e) You need to compile the libmad library from:
++   http://sourceforge.net/projects/mad
++   so that you have a .lib file you can link against
++f) If you compile and it complains about a missing dinput.h you need the
++   DirectX SDK
++g) If you want to have OpenAL you need the OpenAL SDK, too.
++h) Back to your MSVC environment:
++   look at the renderer and botlib subproject and modify the preprocessor
++   definitions in a way so that ELITEFORCE is defined (#define ELITEFORCE),
++   remove _DEBUG in the release version and add NDEBUG (only in release)
++i) Same goes to the main quake3 subproject, also add the define:
++   USE_CODEC_MP3=1 and USE_OPENAL=1;USE_OPENAL_DLOPEN=1 (the last two ones
++   only when you want OpenAL support).
++j) Add all include and library directories to the compiler/linker like
++   OpenAL include/library dir, MAD include/library dir, etc...
++k) You may need to specify additional libraries in the linker dependencies
++   like user32.lib Advapi32.lib ole32.lib etc...
++
++Good luck!
++
++###############
++### Credits ###
++###############
++
++My thanks go out to alot of people who were helpful in creating my mod:
++
++ - A special thanks goes to TiM from the RPG-X project who helped with alot of
++   information
++
++ - The guys on the RPG-X board (Sharky, Scooter...)
++
++ - CoreFusion for a bit of testing in the beginning :)
++
++ - Skinner&Neural Link for infos about the MDR model format.
++
++
++ -- Thilo Schulz (arny@ats.s.bawue.de)
+Index: Makefile.local
+===================================================================
+--- Makefile.local	(revision 0)
++++ Makefile.local	(revision 0)
+@@ -0,0 +1,8 @@
++BUILD_GAME_SO=0
++BUILD_GAME_QVM=0
++BUILD_CLIENT_SMP=0
++#BUILD_CLIENT=0
++# USE_CODEC_VORBIS=1
++USE_CODEC_MP3=1
++USE_OPENAL=1
++USE_OPENAL_DLOPEN=1
+Index: code/unix/unix_shared.c
+===================================================================
+--- code/unix/unix_shared.c	(revision 787)
++++ code/unix/unix_shared.c	(working copy)
+@@ -390,10 +390,18 @@
+             
+ 	if ((p = getenv("HOME")) != NULL) {
+ 		Q_strncpyz(homePath, p, sizeof(homePath));
+-#ifdef MACOS_X
++#ifdef ELITEFORCE
++  #ifdef MACOS_X
++		Q_strcat(homePath, sizeof(homePath), "/Library/Application Support/STVEF");
++  #else
++		Q_strcat(homePath, sizeof(homePath), "/.stvef");
++  #endif
++#else
++  #ifdef MACOS_X
+ 		Q_strcat(homePath, sizeof(homePath), "/Library/Application Support/Quake3");
+-#else
++  #else
+ 		Q_strcat(homePath, sizeof(homePath), "/.q3a");
++  #endif
+ #endif
+ 		if (mkdir(homePath, 0777)) {
+ 			if (errno != EEXIST) 
+Index: code/unix/sdl_glimp.c
+===================================================================
+--- code/unix/sdl_glimp.c	(revision 787)
++++ code/unix/sdl_glimp.c	(working copy)
+@@ -460,9 +460,13 @@
+ 		{
+ 			if (table[j][i] < table[j][i-1])
+ 				table[j][i] = table[j][i-1];
++				
++                        Com_DPrintf("[%d][%d]: %d\n", j, i, table[j][i]);
+ 		}
+ 	}
+ 
++	
++
+ 	SDL_SetGammaRamp(table[0], table[1], table[2]);
+ 
+ //	g  = Cvar_Get("r_gamma", "1.0", 0)->value;
+Index: code/win32/msvc/quake3.vcproj
+===================================================================
+--- code/win32/msvc/quake3.vcproj	(revision 787)
++++ code/win32/msvc/quake3.vcproj	(working copy)
+@@ -1916,9 +1916,15 @@
+ 				RelativePath="..\..\client\snd_codec_wav.c">
+ 			</File>
+ 			<File
++<<<<<<< .mine
++				RelativePath="..\..\client\snd_codec_mp3.c">
++			</File>
++			<File
++=======
+ 				RelativePath="..\..\client\snd_codec_ogg.c">
+ 			</File>
+ 			<File
++>>>>>>> .r783
+ 				RelativePath="..\..\client\snd_dma.c">
+ 				<FileConfiguration
+ 					Name="Release TA|Win32">
+Index: code/renderer/tr_scene.c
+===================================================================
+--- code/renderer/tr_scene.c	(revision 787)
++++ code/renderer/tr_scene.c	(working copy)
+@@ -304,7 +304,9 @@
+ 		ri.Error (ERR_DROP, "R_RenderScene: NULL worldmodel");
+ 	}
+ 
++	#ifndef ELITEFORCE
+ 	Com_Memcpy( tr.refdef.text, fd->text, sizeof( tr.refdef.text ) );
++	#endif
+ 
+ 	tr.refdef.x = fd->x;
+ 	tr.refdef.y = fd->y;
+Index: code/renderer/tr_local.h
+===================================================================
+--- code/renderer/tr_local.h	(revision 787)
++++ code/renderer/tr_local.h	(working copy)
+@@ -149,7 +149,8 @@
+ 	GF_SAWTOOTH, 
+ 	GF_INVERSE_SAWTOOTH, 
+ 
+-	GF_NOISE
++	GF_NOISE,
++	GF_RANDOM
+ 
+ } genFunc_t;
+ 
+@@ -962,6 +963,7 @@
+ 	float					triangleTable[FUNCTABLE_SIZE];
+ 	float					sawToothTable[FUNCTABLE_SIZE];
+ 	float					inverseSawToothTable[FUNCTABLE_SIZE];
++	float                                   noiseTable[FUNCTABLE_SIZE];
+ 	float					fogTable[FOG_TABLE_SIZE];
+ } trGlobals_t;
+ 
+@@ -1108,6 +1110,7 @@
+ //====================================================================
+ 
+ float R_NoiseGet4f( float x, float y, float z, float t );
++int R_RandomOn( float t );
+ void  R_NoiseInit( void );
+ 
+ void R_SwapBuffers( int );
+@@ -1235,6 +1238,9 @@
+ qhandle_t		 RE_RegisterShaderLightMap( const char *name, int lightmapIndex );
+ qhandle_t		 RE_RegisterShader( const char *name );
+ qhandle_t		 RE_RegisterShaderNoMip( const char *name );
++#ifdef ELITEFORCE
++qhandle_t		 RE_RegisterShader3D( const char *name );
++#endif
+ qhandle_t RE_RegisterShaderFromImage(const char *name, int lightmapIndex, image_t *image, qboolean mipRawImage);
+ 
+ shader_t	*R_FindShader( const char *name, int lightmapIndex, qboolean mipRawImage );
+Index: code/renderer/tr_model.c
+===================================================================
+--- code/renderer/tr_model.c	(revision 787)
++++ code/renderer/tr_model.c	(working copy)
+@@ -154,7 +154,9 @@
+ 		filesize = ri.FS_ReadFile(name, (void **) &buf);
+ 		if(!buf)
+ 		{
++			#ifdef _DEBUG
+ 			ri.Printf (PRINT_WARNING,"RE_RegisterModel: couldn't load %s\n", name);
++			#endif
+ 			mod->type = MOD_BAD;
+ 			return 0;
+ 		}
+Index: code/renderer/tr_init.c
+===================================================================
+--- code/renderer/tr_init.c	(revision 787)
++++ code/renderer/tr_init.c	(working copy)
+@@ -210,6 +210,10 @@
+ 		
+ 		GLimp_Init();
+ 
++#ifdef ELITEFORCE
++		glConfig.textureFilterAnisotropicAvailable = textureFilterAnisotropic;
++#endif
++
+ 		strcpy( renderer_buffer, glConfig.renderer_string );
+ 		Q_strlwr( renderer_buffer );
+ 
+@@ -957,7 +961,11 @@
+ 	r_displayRefresh = ri.Cvar_Get( "r_displayRefresh", "0", CVAR_LATCH );
+ 	AssertCvarRange( r_displayRefresh, 0, 200, qtrue );
+ 	r_fullbright = ri.Cvar_Get ("r_fullbright", "0", CVAR_LATCH|CVAR_CHEAT );
++#ifdef ELITEFORCE
++	r_mapOverBrightBits = ri.Cvar_Get ("r_mapOverBrightBits", "1", CVAR_LATCH );
++#else
+ 	r_mapOverBrightBits = ri.Cvar_Get ("r_mapOverBrightBits", "2", CVAR_LATCH );
++#endif
+ 	r_intensity = ri.Cvar_Get ("r_intensity", "1", CVAR_LATCH );
+ 	r_singleShader = ri.Cvar_Get ("r_singleShader", "0", CVAR_CHEAT | CVAR_LATCH );
+ 
+@@ -1070,10 +1078,17 @@
+ 	Com_Memset( &backEnd, 0, sizeof( backEnd ) );
+ 	Com_Memset( &tess, 0, sizeof( tess ) );
+ 
++#ifdef ELITEFORCE
++	if(sizeof(glconfig_t) != 5192)
++	{
++		ri.Error( ERR_FATAL, "Mod ABI incompatible: sizeof(glconfig_t) == %zd != 5192", sizeof(glconfig_t));
++	}
++#else
+ 	if(sizeof(glconfig_t) != 11332)
+ 	{
+ 		ri.Error( ERR_FATAL, "Mod ABI incompatible: sizeof(glconfig_t) == %zd != 11332", sizeof(glconfig_t));
+ 	}
++#endif
+ 
+ //	Swap_Init();
+ 
+@@ -1082,6 +1097,8 @@
+ 	}
+ 	Com_Memset( tess.constantColor255, 255, sizeof( tess.constantColor255 ) );
+ 
++	R_NoiseInit();
++
+ 	//
+ 	// init function tables
+ 	//
+@@ -1091,6 +1108,7 @@
+ 		tr.squareTable[i]	= ( i < FUNCTABLE_SIZE/2 ) ? 1.0f : -1.0f;
+ 		tr.sawToothTable[i] = (float)i / FUNCTABLE_SIZE;
+ 		tr.inverseSawToothTable[i] = 1.0f - tr.sawToothTable[i];
++		tr.noiseTable[i] = R_NoiseGet4f(0, 0, 0, i);
+ 
+ 		if ( i < FUNCTABLE_SIZE / 2 )
+ 		{
+@@ -1111,8 +1129,6 @@
+ 
+ 	R_InitFogTable();
+ 
+-	R_NoiseInit();
+-
+ 	R_Register();
+ 
+ 	max_polys = r_maxpolys->integer;
+@@ -1237,6 +1253,9 @@
+ 	re.RegisterSkin = RE_RegisterSkin;
+ 	re.RegisterShader = RE_RegisterShader;
+ 	re.RegisterShaderNoMip = RE_RegisterShaderNoMip;
++#ifdef ELITEFORCE
++	re.RegisterShader3D = RE_RegisterShader3D;
++#endif
+ 	re.LoadWorld = RE_LoadWorldMap;
+ 	re.SetWorldVisData = RE_SetWorldVisData;
+ 	re.EndRegistration = RE_EndRegistration;
+Index: code/renderer/tr_shader.c
+===================================================================
+--- code/renderer/tr_shader.c	(revision 787)
++++ code/renderer/tr_shader.c	(working copy)
+@@ -294,6 +294,10 @@
+ 	{
+ 		return GF_NOISE;
+ 	}
++	else if( !Q_stricmp( funcname, "random" ) )
++	{
++		return GF_RANDOM;
++	}
+ 
+ 	ri.Printf( PRINT_WARNING, "WARNING: invalid genfunc name '%s' in shader '%s'\n", funcname, shader.name );
+ 	return GF_SIN;
+@@ -742,6 +746,12 @@
+ 			{
+ 				depthFuncBits = 0;
+ 			}
++#ifdef ELITEFORCE
++			if ( !Q_stricmp( token, "disable" ) )
++			{
++				depthFuncBits = 0;
++			}
++#endif
+ 			else if ( !Q_stricmp( token, "equal" ) )
+ 			{
+ 				depthFuncBits = GLS_DEPTHFUNC_EQUAL;
+@@ -2763,7 +2773,38 @@
+ 
+ 	return sh->index;
+ }
++#ifdef ELITEFORCE
++/*
++====================
++RE_RegisterShader3D
+ 
++For explicitly defined shaders that need LIGHTMAP_NONE
++as lightmapIndex.
++====================
++*/
++qhandle_t RE_RegisterShader3D( const char *name ) {
++	shader_t	*sh;
++
++	if ( strlen( name ) >= MAX_QPATH ) {
++		Com_Printf( "Shader name exceeds MAX_QPATH\n" );
++		return 0;
++	}
++
++	sh = R_FindShader( name, LIGHTMAP_NONE, qfalse );
++
++	// we want to return 0 if the shader failed to
++	// load for some reason, but R_FindShader should
++	// still keep a name allocated for it, so if
++	// something calls RE_RegisterShader again with
++	// the same name, we don't try looking for it again
++	if ( sh->defaultShader ) {
++		return 0;
++	}
++
++	return sh->index;
++}
++#endif
++
+ /*
+ ====================
+ R_GetShaderByHandle
+Index: code/renderer/tr_shade_calc.c
+===================================================================
+--- code/renderer/tr_shade_calc.c	(revision 787)
++++ code/renderer/tr_shade_calc.c	(working copy)
+@@ -43,6 +43,8 @@
+ 		return tr.sawToothTable;
+ 	case GF_INVERSE_SAWTOOTH:
+ 		return tr.inverseSawToothTable;
++	case GF_NOISE:
++		return tr.noiseTable;
+ 	case GF_NONE:
+ 	default:
+ 		break;
+@@ -577,7 +579,9 @@
+ 		case DEFORM_TEXT5:
+ 		case DEFORM_TEXT6:
+ 		case DEFORM_TEXT7:
++#ifndef ELITEFORCE
+ 			DeformText( backEnd.refdef.text[ds->deformation - DEFORM_TEXT0] );
++#endif
+ 			break;
+ 		}
+ 	}
+@@ -688,6 +692,8 @@
+ 
+   if ( wf->func == GF_NOISE ) {
+ 		glow = wf->base + R_NoiseGet4f( 0, 0, 0, ( tess.shaderTime + wf->phase ) * wf->frequency ) * wf->amplitude;
++	} else if( wf->func == GF_RANDOM ) {
++		glow = wf->base + R_RandomOn( (tess.shaderTime + wf->phase) * wf->frequency ) * wf->amplitude;		
+ 	} else {
+ 		glow = EvalWaveForm( wf ) * tr.identityLight;
+ 	}
+Index: code/renderer/tr_light.c
+===================================================================
+--- code/renderer/tr_light.c	(revision 787)
++++ code/renderer/tr_light.c	(working copy)
+@@ -294,6 +294,20 @@
+ 	}
+ 	ent->lightingCalculated = qtrue;
+ 
++#ifdef ELITEFORCE
++	if(ent->e.renderfx & RF_FULLBRIGHT)
++	{
++//		ent->ambientLight[0] = ent->ambientLight[1] = ent->ambientLight[1] = 0xFF;
++		((byte *)&ent->ambientLightInt)[0] = 0x7F;
++		((byte *)&ent->ambientLightInt)[1] = 0x7F;
++		((byte *)&ent->ambientLightInt)[2] = 0x7F;
++		((byte *)&ent->ambientLightInt)[3] = 0xFF;
++
++		ent->lightDir[0] = ent->lightDir[1] = ent->lightDir[2] = 0;
++		return;
++	}
++#endif
++
+ 	//
+ 	// trace a sample point down to find ambient light
+ 	//
+Index: code/renderer/tr_types.h
+===================================================================
+--- code/renderer/tr_types.h	(revision 787)
++++ code/renderer/tr_types.h	(working copy)
+@@ -32,6 +32,9 @@
+ #define	RF_THIRD_PERSON		2		// don't draw through eyes, only mirrors (player bodies, chat sprites)
+ #define	RF_FIRST_PERSON		4		// only draw through eyes (view weapon, damage blood blob)
+ #define	RF_DEPTHHACK		8		// for view weapon Z crunching
++#ifdef ELITEFORCE
++#define RF_FULLBRIGHT	0x0010
++#endif
+ #define	RF_NOSHADOW			64		// don't add stencil shadows
+ 
+ #define RF_LIGHTING_ORIGIN	128		// use refEntity->lightingOrigin instead of refEntity->origin
+@@ -42,6 +45,10 @@
+ #define	RF_WRAP_FRAMES		512		// mod the model frames by the maxframes to allow continuous
+ 									// animation without needing to know the frame count
+ 
++#ifdef ELITEFORCE
++#define RF_FORCE_ENT_ALPHA 0x0800		// override shader alpha value and take the one from the entity.
++#endif
++
+ // refdef flags
+ #define RDF_NOWORLDMODEL	1		// used for player configuration screen
+ #define RDF_HYPERSPACE		4		// teleportation effect
+@@ -58,7 +65,28 @@
+ 	polyVert_t			*verts;
+ } poly_t;
+ 
++#ifdef ELITEFORCE
+ typedef enum {
++        RT_MODEL,
++        RT_SPRITE,
++        RT_ORIENTEDSPRITE,              // Replaces RT_POLY, which wasn't used. --Pat
++        RT_ALPHAVERTPOLY,               // Individual alpha levels on each vertex
++        RT_BEAM,
++        RT_RAIL_CORE,
++        RT_RAIL_RINGS,
++        RT_LIGHTNING,
++        RT_PORTALSURFACE,               // doesn't draw anything, just info for portals
++        RT_LINE,                                // New type for Trek MP --Pat
++        RT_ORIENTEDLINE,
++        RT_LINE2,                               // New line type for Trek MP, with taper support --Pat
++        RT_BEZIER,                              // what he said --keith
++        RT_CYLINDER,                    // Yet another Trek primitive!
++        RT_ELECTRICITY,                 // Yet another Trek primitive!
++
++        RT_MAX_REF_ENTITY_TYPE
++} refEntityType_t;
++#else
++typedef enum {
+ 	RT_MODEL,
+ 	RT_POLY,
+ 	RT_SPRITE,
+@@ -70,6 +98,7 @@
+ 
+ 	RT_MAX_REF_ENTITY_TYPE
+ } refEntityType_t;
++#endif
+ 
+ typedef struct {
+ 	refEntityType_t	reType;
+@@ -102,8 +131,49 @@
+ 	float		shaderTime;			// subtracted from refdef time to control effect start times
+ 
+ 	// extra sprite information
++#ifdef ELITEFORCE
++        union
++        {
++                struct
++                {
++                        float rotation;
++                        float radius;
++                        byte  vertRGBA[4][4];
++                } sprite;
++                struct
++                {
++                        float width;
++                        float width2;
++                        float stscale;
++                } line;
++                struct  // that whole put-the-opening-brace-on-the-same-line-as-the-beginning-of-the-definition coding style is fecal // I agree.
++                {
++                        float   width;
++                        vec3_t  control1;
++                        vec3_t  control2;
++                } bezier;
++                struct
++                {
++                        float width;
++                        float width2;
++                        float stscale;
++                        float height;
++                        float bias;
++                        qboolean wrap;
++                } cylinder;
++                struct
++                {
++                        float width;
++                        float deviation;
++                        float stscale;
++                        qboolean wrap;
++                        qboolean taper;
++                } electricity;
++        } data;
++#else
+ 	float		radius;
+ 	float		rotation;
++#endif
+ } refEntity_t;
+ 
+ 
+@@ -124,8 +194,10 @@
+ 	// 1 bits will prevent the associated area from rendering at all
+ 	byte		areamask[MAX_MAP_AREA_BYTES];
+ 
++#ifndef ELITEFORCE
+ 	// text messages for deform text shaders
+ 	char		text[MAX_RENDER_STRINGS][MAX_RENDER_STRING_LENGTH];
++#endif
+ } refdef_t;
+ 
+ 
+@@ -145,7 +217,10 @@
+ */
+ typedef enum {
+ 	TC_NONE,
+-	TC_S3TC
++	TC_S3TC,
++#ifdef ELITEFORCE
++	TC_S3TC_DXT
++#endif
+ } textureCompression_t;
+ 
+ typedef enum {
+@@ -172,7 +247,11 @@
+ 	char					renderer_string[MAX_STRING_CHARS];
+ 	char					vendor_string[MAX_STRING_CHARS];
+ 	char					version_string[MAX_STRING_CHARS];
++#ifdef ELITEFORCE
++	char					extensions_string[2*MAX_STRING_CHARS];
++#else
+ 	char					extensions_string[BIG_INFO_STRING];
++#endif
+ 
+ 	int						maxTextureSize;			// queried from GL
+ 	int						maxActiveTextures;		// multitexture ability
+@@ -185,6 +264,9 @@
+ 	qboolean				deviceSupportsGamma;
+ 	textureCompression_t	textureCompression;
+ 	qboolean				textureEnvAddAvailable;
++#ifdef ELITEFORCE
++	qboolean				textureFilterAnisotropicAvailable;
++#endif
+ 
+ 	int						vidWidth, vidHeight;
+ 	// aspect is the screen's physical width / height, which may be different
+Index: code/renderer/tr_noise.c
+===================================================================
+--- code/renderer/tr_noise.c	(revision 787)
++++ code/renderer/tr_noise.c	(working copy)
+@@ -22,15 +22,18 @@
+ // tr_noise.c
+ #include "tr_local.h"
+ 
+-#define NOISE_SIZE 256
++#define NOISE_SIZE FUNCTABLE_SIZE
+ #define NOISE_MASK ( NOISE_SIZE - 1 )
+ 
+ #define VAL( a ) s_noise_perm[ ( a ) & ( NOISE_MASK )]
++#define VALR( a ) s_random[ ( a ) & ( NOISE_MASK )]
+ #define INDEX( x, y, z, t ) VAL( x + VAL( y + VAL( z + VAL( t ) ) ) )
+ 
+ static float s_noise_table[NOISE_SIZE];
+ static int s_noise_perm[NOISE_SIZE];
+ 
++static int s_random[NOISE_SIZE];
++
+ #define LERP( a, b, w ) ( a * ( 1.0f - w ) + b * w )
+ 
+ static float GetNoiseValue( int x, int y, int z, int t )
+@@ -50,6 +53,8 @@
+ 	{
+ 		s_noise_table[i] = ( float ) ( ( ( rand() / ( float ) RAND_MAX ) * 2.0 - 1.0 ) );
+ 		s_noise_perm[i] = ( unsigned char ) ( rand() / ( float ) RAND_MAX * 255 );
++
++		s_random[i] = rand() & 0x01;
+ 	}
+ }
+ 
+@@ -93,3 +98,9 @@
+ 
+ 	return finalvalue;
+ }
++
++// used in the shader functions (GF_RANDOM) to implement a quasi random flickering.
++int R_RandomOn(float t)
++{
++	return VALR((unsigned int) floor(t));
++}
+Index: code/renderer/tr_public.h
+===================================================================
+--- code/renderer/tr_public.h	(revision 787)
++++ code/renderer/tr_public.h	(working copy)
+@@ -49,6 +49,9 @@
+ 	qhandle_t (*RegisterSkin)( const char *name );
+ 	qhandle_t (*RegisterShader)( const char *name );
+ 	qhandle_t (*RegisterShaderNoMip)( const char *name );
++#ifdef ELITEFORCE
++	qhandle_t (*RegisterShader3D)( const char *name );
++#endif
+ 	void	(*LoadWorld)( const char *name );
+ 
+ 	// the vis data is a large enough block of data that we go to the trouble
+Index: code/renderer/tr_main.c
+===================================================================
+--- code/renderer/tr_main.c	(revision 787)
++++ code/renderer/tr_main.c	(working copy)
+@@ -968,18 +968,25 @@
+ int R_SpriteFogNum( trRefEntity_t *ent ) {
+ 	int				i, j;
+ 	fog_t			*fog;
++	float radius;
+ 
+ 	if ( tr.refdef.rdflags & RDF_NOWORLDMODEL ) {
+ 		return 0;
+ 	}
+ 
++	#ifdef ELITEFORCE
++	radius = ent->e.data.sprite.radius;
++	#else
++	radius = ent->e.radius;
++	#endif
++
+ 	for ( i = 1 ; i < tr.world->numfogs ; i++ ) {
+ 		fog = &tr.world->fogs[i];
+ 		for ( j = 0 ; j < 3 ; j++ ) {
+-			if ( ent->e.origin[j] - ent->e.radius >= fog->bounds[1][j] ) {
++			if ( ent->e.origin[j] - radius >= fog->bounds[1][j] ) {
+ 				break;
+ 			}
+-			if ( ent->e.origin[j] + ent->e.radius <= fog->bounds[0][j] ) {
++			if ( ent->e.origin[j] + radius <= fog->bounds[0][j] ) {
+ 				break;
+ 			}
+ 		}
+@@ -1177,6 +1184,18 @@
+ 		switch ( ent->e.reType ) {
+ 		case RT_PORTALSURFACE:
+ 			break;		// don't draw anything
++
++#ifdef ELITEFORCE
++		case RT_ORIENTEDSPRITE:
++		case RT_ALPHAVERTPOLY:
++		case RT_LINE:
++		case RT_ORIENTEDLINE:
++		case RT_LINE2:
++		case RT_BEZIER:
++		case RT_CYLINDER:
++		case RT_ELECTRICITY:
++#endif
++
+ 		case RT_SPRITE:
+ 		case RT_BEAM:
+ 		case RT_LIGHTNING:
+Index: code/renderer/tr_shade.c
+===================================================================
+--- code/renderer/tr_shade.c	(revision 787)
++++ code/renderer/tr_shade.c	(working copy)
+@@ -1047,6 +1047,10 @@
+ static void RB_IterateStagesGeneric( shaderCommands_t *input )
+ {
+ 	int stage;
++#ifdef ELITEFORCE
++	qboolean overridealpha;
++	int oldalphaGen = 0;
++#endif
+ 
+ 	for ( stage = 0; stage < MAX_SHADER_STAGES; stage++ )
+ 	{
+@@ -1057,7 +1061,25 @@
+ 			break;
+ 		}
+ 
++		#ifdef ELITEFORCE
++		// Override the shader alpha channel if requested.
++		if(backEnd.currentEntity->e.renderfx & RF_FORCE_ENT_ALPHA)
++		{
++			overridealpha = qtrue;
++			oldalphaGen = pStage->alphaGen;
++			pStage->alphaGen = AGEN_ENTITY;
++		}
++		else
++			overridealpha = qfalse;
++		#endif
++
+ 		ComputeColors( pStage );
++		
++		#ifdef ELITEFORCE
++		if(overridealpha)
++			pStage->alphaGen = oldalphaGen;
++		#endif
++		
+ 		ComputeTexCoords( pStage );
+ 
+ 		if ( !setArraysOnce )
+@@ -1090,7 +1112,15 @@
+ 			else 
+ 				R_BindAnimatedImage( &pStage->bundle[0] );
+ 
+-			GL_State( pStage->stateBits );
++			#ifdef ELITEFORCE
++			if(overridealpha && backEnd.currentEntity->e.shaderRGBA[3] < 0xFF && !(pStage->stateBits & GLS_ATEST_BITS))
++			{
++				GL_State((pStage->stateBits & ~(GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS | GLS_ATEST_BITS))  // remove the shader set values.
++					 | GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA | GLS_ATEST_GT_0); // Now add the default values.
++			}
++			else
++			#endif
++				GL_State( pStage->stateBits );
+ 
+ 			//
+ 			// draw
+Index: code/renderer/tr_surface.c
+===================================================================
+--- code/renderer/tr_surface.c	(revision 787)
++++ code/renderer/tr_surface.c	(working copy)
+@@ -156,17 +156,25 @@
+ static void RB_SurfaceSprite( void ) {
+ 	vec3_t		left, up;
+ 	float		radius;
++	float		rotation;
+ 
+ 	// calculate the xyz locations for the four corners
++	#ifdef ELITEFORCE
++	radius = backEnd.currentEntity->e.data.sprite.radius;
++	rotation = backEnd.currentEntity->e.data.sprite.rotation;
++	#else
+ 	radius = backEnd.currentEntity->e.radius;
+-	if ( backEnd.currentEntity->e.rotation == 0 ) {
++	rotation = backEnd.currentEntity->e.rotation;
++	#endif
++
++	if ( rotation == 0 ) {
+ 		VectorScale( backEnd.viewParms.or.axis[1], radius, left );
+ 		VectorScale( backEnd.viewParms.or.axis[2], radius, up );
+ 	} else {
+ 		float	s, c;
+ 		float	ang;
+ 		
+-		ang = M_PI * backEnd.currentEntity->e.rotation / 180;
++		ang = M_PI * rotation / 180;
+ 		s = sin( ang );
+ 		c = cos( ang );
+ 
+@@ -549,7 +557,541 @@
+ 	}
+ }
+ 
++#ifdef ELITEFORCE
++
+ /*
++==============
++RB_SurfaceOrientedSprite
++==============
++*/
++static void RB_SurfaceOrientedSprite( void )
++{
++	vec3_t		left, up;
++	float		radius;
++	float		rotation;
++
++	// calculate the xyz locations for the four corners
++	radius = backEnd.currentEntity->e.data.sprite.radius;
++	rotation = backEnd.currentEntity->e.data.sprite.rotation;
++
++	if (rotation == 0)
++	{
++		VectorScale( backEnd.currentEntity->e.axis[1], radius, left );
++		VectorScale( backEnd.currentEntity->e.axis[2], radius, up );
++	}
++	else
++	{
++		float	s, c;
++		float	ang;
++		
++		ang = M_PI * rotation / 180;
++		s = sin( ang );
++		c = cos( ang );
++
++		VectorScale( backEnd.currentEntity->e.axis[1], c * radius, left );
++		VectorMA( left, -s * radius, backEnd.currentEntity->e.axis[2], left );
++
++		VectorScale( backEnd.currentEntity->e.axis[2], c * radius, up );
++		VectorMA( up, s * radius, backEnd.currentEntity->e.axis[1], up );
++	}
++	if ( backEnd.viewParms.isMirror )
++		VectorSubtract( vec3_origin, left, left );
++
++	RB_AddQuadStamp( backEnd.currentEntity->e.origin, left, up, backEnd.currentEntity->e.shaderRGBA );
++}
++
++void RB_Line(vec3_t start, vec3_t end, vec3_t linedirection, vec3_t left,
++	     vec3_t *corners, float starttex, float endtex, refEntity_t *e)
++{
++	int ndx, numind;
++	color4ub_t *vertcols;
++
++	RB_CHECKOVERFLOW( 4, 6 );
++
++	// Set up the triangles ..
++	ndx = tess.numVertexes;
++	numind = tess.numIndexes;
++
++	tess.indexes[ numind ] = ndx;
++	tess.indexes[ numind + 1 ] = ndx + 1;
++	tess.indexes[ numind + 2 ] = ndx + 3;
++
++	tess.indexes[ numind + 3 ] = ndx + 3;
++	tess.indexes[ numind + 4 ] = ndx + 1;
++	tess.indexes[ numind + 5 ] = ndx + 2;
++
++	// now create the corner vertices
++
++	if(corners)
++	{
++		// we have the corner points for the start already given.
++		VectorCopy(corners[0], tess.xyz[ndx]);
++		VectorCopy(corners[1], tess.xyz[ndx+1]);
++	}
++	else
++	{
++		// start left corner
++		VectorAdd(start, left, tess.xyz[ndx]);
++		// start right corner
++		VectorSubtract(start, left, tess.xyz[ndx+1]);
++	}
++	// end right corner
++	VectorSubtract(end, left, tess.xyz[ndx+2]);
++	// end left corner
++	VectorAdd(end, left, tess.xyz[ndx+3]);
++	
++	if(corners)
++	{
++		// save the end corner points here.
++		VectorCopy(tess.xyz[ndx+3], corners[0]);
++		VectorCopy(tess.xyz[ndx+2], corners[1]);
++	}
++
++	// Texture stuff....
++	tess.texCoords[ndx][0][0] = 0;
++	tess.texCoords[ndx][0][1] = starttex;
++
++	tess.texCoords[ndx+1][0][0] = 1;
++	tess.texCoords[ndx+1][0][1] = starttex;
++	
++	tess.texCoords[ndx+2][0][0] = 1;
++	tess.texCoords[ndx+2][0][1] = endtex;
++
++	tess.texCoords[ndx+3][0][0] = 0;
++	tess.texCoords[ndx+3][0][1] = endtex;
++
++	vertcols = tess.vertexColors;
++
++	vertcols[ndx][0] = vertcols[ndx+1][0] = vertcols[ndx+2][0] = vertcols[ndx+3][0] = e->shaderRGBA[0];
++	vertcols[ndx][1] = vertcols[ndx+1][1] = vertcols[ndx+2][1] = vertcols[ndx+3][1] = e->shaderRGBA[1];
++	vertcols[ndx][2] = vertcols[ndx+1][2] = vertcols[ndx+2][2] = vertcols[ndx+3][2] = e->shaderRGBA[2];
++	vertcols[ndx][3] = vertcols[ndx+1][3] = vertcols[ndx+2][3] = vertcols[ndx+3][3] = e->shaderRGBA[3];
++
++	tess.numVertexes += 4;
++	tess.numIndexes += 6;
++
++
++}
++
++// Create a normal vector and scale it to the right length
++void RB_LineNormal(vec3_t vec1, vec3_t vec2, float scale, vec3_t result)
++{
++	// Create the offset vector for the width of the line
++	CrossProduct(vec1, vec2, result);
++	// Normalize the offset vector first.
++	VectorNormalize(result);
++	// Scale the offset vector to the intended width.
++	VectorScale(result, scale / 2, result);
++}
++
++// Let's draw a thick line from A to B and dance happily around a christmas tree!
++void RB_SurfaceLine( void )
++{
++	refEntity_t *e;
++	vec3_t left;		// I vote the green party...
++	vec3_t start, end, linedirection, start2origin;
++	shader_t *surfshader;
++	
++	e = &backEnd.currentEntity->e;
++
++	// Getting up before 1:00 pm to attend HM I lectures finally paid off..
++
++	// Get the start and end point of the line
++	VectorCopy(e->origin, start);
++	VectorCopy(e->oldorigin, end);
++
++	// Direction vector for the line:
++	VectorSubtract(end, start, linedirection);
++	// Direction vector for the start to current point of view
++	VectorSubtract(backEnd.viewParms.or.origin, start, start2origin);
++
++	RB_LineNormal(start2origin, linedirection, e->data.line.width, left);
++	RB_Line(start, end, linedirection, left, NULL, 0, e->data.line.stscale, e); 
++
++	// Hack to make the dreadnought lightning bolt work: set the correct cull type...
++	if((surfshader = R_GetShaderByHandle(e->customShader)))
++		surfshader->cullType = CT_TWO_SIDED;
++}
++
++void RB_SurfaceOrientedLine(void)
++{
++	refEntity_t *e;
++	vec3_t left;
++	vec3_t linedirection;
++	shader_t *surfshader;
++
++	e = &backEnd.currentEntity->e;
++
++	VectorSubtract(e->oldorigin, e->origin, linedirection);
++
++	VectorCopy(e->axis[1], left);
++	VectorNormalize(left);
++	VectorScale(left, e->data.line.width / 2, left);
++	
++	RB_Line(e->origin, e->oldorigin, linedirection, left, NULL, 0, 1, e);
++
++	surfshader = R_GetShaderByHandle(e->customShader);
++	surfshader->cullType = CT_TWO_SIDED;
++
++}
++
++// This time it's not a rectangle but a trapezoid I guess ...
++void RB_SurfaceLine2( void )
++{
++	refEntity_t *e;
++	vec3_t startleft, endleft;		// I still vote the green party...
++	vec3_t start, end, linedirection, start2origin;
++	color4ub_t *vertcols;
++	int ndx, numind;
++	
++	RB_CHECKOVERFLOW( 6, 12 );
++	
++	e = &backEnd.currentEntity->e;
++
++	// Set up the triangle ..
++	ndx = tess.numVertexes;
++	numind = tess.numIndexes;
++
++	tess.indexes[ numind ] = ndx;
++	tess.indexes[ numind + 1 ] = ndx + 1;
++	tess.indexes[ numind + 2 ] = ndx + 5;
++	tess.indexes[ numind + 3 ] = ndx + 5;
++	tess.indexes[ numind + 4 ] = ndx + 4;
++	tess.indexes[ numind + 5 ] = ndx + 1;
++	tess.indexes[ numind + 6 ] = ndx + 1;
++	tess.indexes[ numind + 7 ] = ndx + 4;
++	tess.indexes[ numind + 8 ] = ndx + 3;
++	tess.indexes[ numind + 9 ] = ndx + 3;
++	tess.indexes[ numind + 10 ] = ndx + 2;
++	tess.indexes[ numind + 11 ] = ndx + 1;
++
++
++	// Get the start and end point of the line
++	VectorCopy(e->origin, start);
++	VectorCopy(e->oldorigin, end);
++
++	// Direction vector for the line:
++	VectorSubtract(end, start, linedirection);
++	// Direction vector for the start to current point of view
++	VectorSubtract(backEnd.viewParms.or.origin, start, start2origin);
++
++	// Create the offset vector for the width of the line
++	CrossProduct(start2origin, linedirection, startleft);
++	// Normalize the offset vector first.
++	VectorNormalize(startleft);
++	// The normal of the triangle we just thought up:
++
++
++	// Scale the offset vector to the intended width.
++	VectorScale(startleft, e->data.line.width2 / 2, endleft);
++	VectorScale(startleft, e->data.line.width / 2, startleft);
++
++	// now create the corner vertices
++
++	// start left corner
++	VectorAdd(start, startleft, tess.xyz[ndx]);
++	// start point
++	VectorCopy(start, tess.xyz[ndx+1]);
++	// start right corner
++	VectorSubtract(start, startleft, tess.xyz[ndx+2]);
++	// end right corner
++	VectorSubtract(end, endleft, tess.xyz[ndx+3]);
++	// end point
++	VectorCopy(end, tess.xyz[ndx+4]);
++	// end left corner	
++	VectorAdd(end, endleft, tess.xyz[ndx+5]);
++
++	// Texture stuff....
++	tess.texCoords[ndx][0][0] = 0;
++	tess.texCoords[ndx][0][1] = 0;
++
++	tess.texCoords[ndx+1][0][0] = 0.5;
++	tess.texCoords[ndx+1][0][1] = 0;
++	
++	tess.texCoords[ndx+2][0][0] = 1;
++	tess.texCoords[ndx+2][0][1] = 0;
++
++	tess.texCoords[ndx+3][0][0] = 1;
++	tess.texCoords[ndx+3][0][1] = 1;
++
++	tess.texCoords[ndx+4][0][0] = 0.5;
++	tess.texCoords[ndx+4][0][1] = 1;
++
++	tess.texCoords[ndx+5][0][0] = 0;
++	tess.texCoords[ndx+5][0][1] = 1;
++
++	vertcols = tess.vertexColors;
++
++	vertcols[ndx][0] = vertcols[ndx+1][0] = vertcols[ndx+2][0] =
++		vertcols[ndx+3][0] = vertcols[ndx+4][0] = vertcols[ndx+5][0] = e->shaderRGBA[0];
++	vertcols[ndx][1] = vertcols[ndx+1][1] = vertcols[ndx+2][1] =
++		vertcols[ndx+3][1] = vertcols[ndx+4][1] = vertcols[ndx+5][1] = e->shaderRGBA[1];
++	vertcols[ndx][2] = vertcols[ndx+1][2] = vertcols[ndx+2][2] =
++		vertcols[ndx+3][2] = vertcols[ndx+4][2] = vertcols[ndx+5][2] = e->shaderRGBA[2];
++	vertcols[ndx][3] = vertcols[ndx+1][3] = vertcols[ndx+2][3] =
++		vertcols[ndx+3][3] = vertcols[ndx+4][3] = vertcols[ndx+5][3] = e->shaderRGBA[3];
++
++	tess.numVertexes += 6;
++	tess.numIndexes += 12;
++}
++
++// Draw a cubic bezier curve for the imod weapon.
++#define BEZIER_SEGMENTS 16
++#define BEZIER_STEPSIZE 1.0 / BEZIER_SEGMENTS
++
++void RB_SurfaceBezier(void)
++{
++	refEntity_t *e = &backEnd.currentEntity->e;
++	double tvar = 0, one_tvar; // use double to not lose as much precision on cubing and squaring.
++	float starttc, endtc;
++	vec3_t segstartpos, segendpos, prevend[2];
++	vec3_t linedirection, start2origin, left;
++	int index;
++
++	VectorCopy(e->origin, segstartpos);
++
++	// start of the bezier curve is pointy
++	VectorCopy(segstartpos, prevend[0]);
++	VectorCopy(segstartpos, prevend[1]);
++	
++	// iterate through all segments we have to create.
++	while(tvar <= 1.0)
++	{
++		// get the texture position for the rectangular approximating the bezier curve.
++		starttc = tvar / 2.0;
++		tvar += BEZIER_STEPSIZE;
++		endtc = tvar / 2.0;
++
++		one_tvar = 1.0 - tvar;
++
++		// get the endpoint for this segment.
++
++		for(index = 0; index < 3; index++)
++		{
++			// C(t) = P0 (t-1)^3 + 3 P1 t (t-1)^2 + 3 P2 t^2 (t-1) + P3 t^3
++			segendpos[index] =
++					e->origin[index] * one_tvar * one_tvar * one_tvar +
++					3 * e->data.bezier.control1[index] * tvar * one_tvar * one_tvar +
++					3 * e->data.bezier.control2[index] * tvar * tvar * one_tvar +
++					e->oldorigin[index] * tvar * tvar * tvar;
++		}
++		
++		// Direction vector for the line:
++		VectorSubtract(segendpos, segstartpos, linedirection);
++		// Direction vector for the start to current point of view
++		VectorSubtract(backEnd.viewParms.or.origin, segstartpos, start2origin);
++
++		RB_LineNormal(start2origin, linedirection, e->data.bezier.width, left);
++		RB_Line(segstartpos, segendpos, linedirection, left, prevend, starttc, endtc, e);
++		
++		// Our next segment starts where the old one ends.
++		VectorCopy(segendpos, segstartpos);
++	}
++}
++
++// this actually isn't a cylinder but a frustum, but for the sake of naming
++// conventions we'll keep calling it a cylinder.
++
++// number of rectangles we'll use to approximate a frustum of a cone.
++#define CYLINDER_MAXPLANES 32
++
++void RB_SurfaceCylinder(void)
++{
++	int planes, index = 0;	// calculate the number of planes based on the level of detail.
++	vec3_t lodcalc, bottom, top, zerodeg_bottom, zerodeg_top, faxis;
++	vec3_t bottomcorner, topcorner;
++	float anglestep, tcstep = 0;
++	int ndx, numind;
++	color4ub_t *vertcols;
++	refEntity_t *e = &backEnd.currentEntity->e;
++
++	// LOD calculation
++	VectorMA(e->origin, e->data.cylinder.height / 2.0f, e->axis[0], lodcalc);
++	VectorSubtract(lodcalc, backEnd.viewParms.or.origin, lodcalc);
++	planes = (1 - VectorLength(lodcalc) / 1024) * CYLINDER_MAXPLANES * e->data.cylinder.bias;
++	
++	if(planes < 8)
++		planes = 8;
++	else if(planes > CYLINDER_MAXPLANES)
++		planes = CYLINDER_MAXPLANES;
++
++	RB_CHECKOVERFLOW(4 * planes, 6 * planes);
++
++	VectorCopy(e->axis[0], faxis);
++
++	// get the start and end point of the frustum:
++	VectorCopy(e->origin, bottom);
++	VectorMA(e->origin, e->data.cylinder.height, faxis, top);
++	
++	// create a normalized perpendicular vector to the frustum height.
++	PerpendicularVector(zerodeg_bottom, faxis);
++
++	// This vector gets rotated to create the top ring
++	VectorScale(zerodeg_bottom, e->data.cylinder.width2 / 2.0f, zerodeg_top);
++	// Likewise the vector for the lower ring:
++	VectorScale(zerodeg_bottom, e->data.cylinder.width / 2.0f, zerodeg_bottom);
++
++	anglestep = 360.0f / planes;
++	if(e->data.cylinder.wrap)
++		tcstep = e->data.cylinder.stscale / planes;
++	
++	ndx = tess.numVertexes;
++	numind = tess.numIndexes;
++	vertcols = tess.vertexColors;
++
++	// this for loop is creating all surface planes.
++	while(index < planes)
++	{
++		index++;
++	
++		// Set up the indexes for the new plane:
++		tess.indexes[numind++] = ndx;
++		tess.indexes[numind++] = ndx + 2;
++		tess.indexes[numind++] = ndx + 3;
++		
++		tess.indexes[numind++] = ndx;
++		tess.indexes[numind++] = ndx + 3;
++		tess.indexes[numind++] = ndx + 1;
++		
++		if(index <= 1)
++		{
++			VectorAdd(bottom, zerodeg_bottom, tess.xyz[ndx]);
++			VectorAdd(top, zerodeg_top, tess.xyz[ndx + 1]);
++		}
++		else
++		{
++			VectorCopy(bottomcorner, tess.xyz[ndx]);
++			VectorCopy(topcorner, tess.xyz[ndx + 1]);
++		}
++
++		// Create on the right side two new vertices, first the bottom, then the top one.
++		if(index >= planes)
++		{
++			VectorAdd(bottom, zerodeg_bottom, bottomcorner);
++			VectorAdd(top, zerodeg_top, topcorner);
++		}
++		else
++		{
++			RotatePointAroundVector(bottomcorner, faxis, zerodeg_bottom, anglestep * index);
++			VectorAdd(bottom, bottomcorner, bottomcorner);
++			RotatePointAroundVector(topcorner, faxis, zerodeg_top, index * anglestep);
++			VectorAdd(top, topcorner, topcorner);
++		}
++		
++		VectorCopy(bottomcorner, tess.xyz[ndx + 2]);
++		VectorCopy(topcorner, tess.xyz[ndx + 3]);
++		
++		// Take care about the texture stuff
++		if(e->data.cylinder.wrap)
++		{
++			tess.texCoords[ndx][0][0] = tcstep * (index - 1);
++			tess.texCoords[ndx][0][1] = 0;
++			
++			tess.texCoords[ndx+1][0][0] = tcstep * (index - 1);
++			tess.texCoords[ndx+1][0][1] = 1;
++
++			tess.texCoords[ndx+2][0][0] = tcstep * index;
++			tess.texCoords[ndx+2][0][1] = 0;
++			
++			tess.texCoords[ndx+3][0][0] = tcstep * index;
++			tess.texCoords[ndx+3][0][1] = 1;
++		}
++		else
++		{
++			tess.texCoords[ndx][0][0] = 0;
++			tess.texCoords[ndx][0][1] = 0;
++			
++			tess.texCoords[ndx+1][0][0] = 0;
++			tess.texCoords[ndx+1][0][1] = 1;
++
++			tess.texCoords[ndx+2][0][0] = e->data.cylinder.stscale;
++			tess.texCoords[ndx+2][0][1] = 0;
++			
++			tess.texCoords[ndx+3][0][0] = e->data.cylinder.stscale;
++			tess.texCoords[ndx+3][0][1] = 1;
++		}
++
++		vertcols[ndx][0] = vertcols[ndx+1][0] = vertcols[ndx+2][0] = vertcols[ndx+3][0] = e->shaderRGBA[0];
++		vertcols[ndx][1] = vertcols[ndx+1][1] = vertcols[ndx+2][1] = vertcols[ndx+3][1] = e->shaderRGBA[1];
++		vertcols[ndx][2] = vertcols[ndx+1][2] = vertcols[ndx+2][2] = vertcols[ndx+3][2] = e->shaderRGBA[2];
++		vertcols[ndx][3] = vertcols[ndx+1][3] = vertcols[ndx+2][3] = vertcols[ndx+3][3] = 0xff;
++                               
++		ndx += 4;
++	}
++	
++	tess.numVertexes = ndx;
++	tess.numIndexes = numind;	
++}
++
++// Draws lightning using a multisegment line with jumpy connecting points.
++#define ELECTRICITY_SEGMENTS 16
++#define ELECTRICITY_STEPSIZE 1.0 / ELECTRICITY_SEGMENTS
++
++void RB_SurfaceElectricity(void)
++{
++	vec3_t start, end, linedirection, segstartpos, segendpos;
++	vec3_t prevend[2], left, start2origin, start2end;
++	refEntity_t *e = &backEnd.currentEntity->e;
++	float width, deviation, veclen;
++	int index;
++	
++	VectorCopy(e->origin, start);
++	VectorCopy(e->oldorigin, end);
++	VectorSubtract(end, start, start2end);
++	veclen = VectorLength(start2end);
++	
++	width = e->data.electricity.width;
++	deviation = e->data.electricity.deviation;
++
++	VectorCopy(start, segendpos);
++	
++	for(index = 0; index < ELECTRICITY_SEGMENTS; index++)
++	{
++		VectorCopy(segendpos, segstartpos);
++		
++		if(index > ELECTRICITY_SEGMENTS - 2)
++		{
++			// This is the last segment.
++			VectorCopy(end, segendpos);
++		}
++		else
++		{
++			if(index > ELECTRICITY_SEGMENTS - 3)
++			{
++				// The line should have somewhat deviated by now.
++				// Make the last two segments go to the endpoint
++
++				// get the middle point between startpos and endpos
++				VectorAdd(segstartpos, end, segendpos);
++				VectorScale(segendpos, 0.5f, segendpos);
++			}
++
++			// Slightly misplace the next point on the line.
++			segendpos[PITCH] += (start2end[PITCH] + crandom() * deviation * veclen) * ELECTRICITY_STEPSIZE;
++			segendpos[YAW] += (start2end[YAW] + crandom() * deviation * veclen) * ELECTRICITY_STEPSIZE;
++			segendpos[ROLL] += (start2end[ROLL] + crandom() * deviation * veclen / 2.0) * ELECTRICITY_STEPSIZE;
++		}
++
++		// Direction vector for the line:
++		VectorSubtract(segendpos, segstartpos, linedirection);
++		// Direction vector for the start to current point of view
++		VectorSubtract(backEnd.viewParms.or.origin, segstartpos, start2origin);
++		
++		RB_LineNormal(start2origin, linedirection, width, left);
++
++		if(!index)
++		{
++			// this is our first segment, create the starting points
++			VectorAdd(segstartpos, left, prevend[0]);
++			VectorSubtract(segstartpos, left, prevend[1]);
++		}
++		
++		RB_Line(segstartpos, segendpos, linedirection, left, prevend, 0, e->data.electricity.stscale, e);
++	}
++}
++#endif
++
++/*
+ ** VectorArrayNormalize
+ *
+ * The inputs to this routing seem to always be close to length = 1.0 (about 0.6 to 2.0)
+@@ -1144,7 +1686,6 @@
+ 	}
+ }
+ 
+-
+ /*
+ ===========================================================================
+ 
+@@ -1188,6 +1729,9 @@
+ */
+ void RB_SurfaceEntity( surfaceType_t *surfType ) {
+ 	switch( backEnd.currentEntity->e.reType ) {
++#ifdef ELITEFORCE
++	case RT_ALPHAVERTPOLY:
++#endif
+ 	case RT_SPRITE:
+ 		RB_SurfaceSprite();
+ 		break;
+@@ -1203,6 +1747,29 @@
+ 	case RT_LIGHTNING:
+ 		RB_SurfaceLightningBolt();
+ 		break;
++#ifdef ELITEFORCE
++	case RT_ORIENTEDSPRITE:
++		RB_SurfaceOrientedSprite();
++		break;
++	case RT_LINE:
++		RB_SurfaceLine();
++		break;
++	case RT_ORIENTEDLINE:
++		RB_SurfaceOrientedLine();
++		break;
++	case RT_LINE2:
++		RB_SurfaceLine2();
++		break;
++	case RT_BEZIER:
++		RB_SurfaceBezier();
++		break;
++	case RT_CYLINDER:
++		RB_SurfaceCylinder();
++		break;
++	case RT_ELECTRICITY:
++		RB_SurfaceElectricity();
++		break;
++#endif
+ 	default:
+ 		RB_SurfaceAxis();
+ 		break;
+Index: code/server/sv_world.c
+===================================================================
+--- code/server/sv_world.c	(revision 787)
++++ code/server/sv_world.c	(working copy)
+@@ -222,28 +222,88 @@
+ 	// encode the size into the entityState_t for client prediction
+ 	if ( gEnt->r.bmodel ) {
+ 		gEnt->s.solid = SOLID_BMODEL;		// a solid_box will never create this value
++#ifdef ELITEFORCE
++	} else if ( gEnt->r.contents & ( CONTENTS_SOLID | CONTENTS_BODY | CONTENTS_SHOTCLIP ) ) {
++		if(gEnt->r.svFlags & SVF_SHIELD_BBOX)
++		{
++			if(gEnt->s.time2 & (1 << 24))
++			{
++				i = gEnt->r.maxs[0];
++				if (i<1)
++					i = 1;
++					if (i>255)
++					i = 255;
++
++				// z is not symetric
++				j = -gEnt->r.mins[0];
++				if (j<1)
++					j = 1;
++				if (j>255)
++					j = 255;
++
++				// and z maxs can be negative...
++				k = gEnt->r.maxs[2];
++				if (k<1)
++					k = 1;
++				if (k>255)
++					k = 255;
++
++				gEnt->s.eFlags |= EF_SHIELD_BOX_X;
++			}
++			else
++			{
++				i = gEnt->r.maxs[1];
++				if (i<1)
++					i = 1;
++					if (i>255)
++					i = 255;
++
++				// z is not symetric
++				j = -gEnt->r.mins[1];
++				if (j<1)
++					j = 1;
++				if (j>255)
++					j = 255;
++
++				// and z maxs can be negative...
++				k = gEnt->r.maxs[2];
++				if (k<1)
++					k = 1;
++				if (k>255)
++					k = 255;
++
++				gEnt->s.eFlags |= EF_SHIELD_BOX_Y;
++			}
++		}
++		else
++		{
++#else
+ 	} else if ( gEnt->r.contents & ( CONTENTS_SOLID | CONTENTS_BODY ) ) {
+-		// assume that x/y are equal and symetric
+-		i = gEnt->r.maxs[0];
+-		if (i<1)
+-			i = 1;
+-		if (i>255)
+-			i = 255;
++#endif
++			// assume that x/y are equal and symetric
++			i = gEnt->r.maxs[0];
++			if (i<1)
++				i = 1;
++			if (i>255)
++				i = 255;
+ 
+-		// z is not symetric
+-		j = (-gEnt->r.mins[2]);
+-		if (j<1)
+-			j = 1;
+-		if (j>255)
+-			j = 255;
++			// z is not symetric
++			j = (-gEnt->r.mins[2]);
++			if (j<1)
++				j = 1;
++			if (j>255)
++				j = 255;
+ 
+-		// and z maxs can be negative...
+-		k = (gEnt->r.maxs[2]+32);
+-		if (k<1)
+-			k = 1;
+-		if (k>255)
+-			k = 255;
+-
++			// and z maxs can be negative...
++			k = (gEnt->r.maxs[2]+32);
++			if (k<1)
++				k = 1;
++			if (k>255)
++				k = 255;
++#ifdef ELITEFORCE
++		}
++#endif
++		
+ 		gEnt->s.solid = (k<<16) | (j<<8) | i;
+ 	} else {
+ 		gEnt->s.solid = 0;
+Index: code/server/sv_game.c
+===================================================================
+--- code/server/sv_game.c	(revision 787)
++++ code/server/sv_game.c	(working copy)
+@@ -351,9 +351,10 @@
+ 		return 0;
+ 	case G_FS_GETFILELIST:
+ 		return FS_GetFileList( VMA(1), VMA(2), VMA(3), args[4] );
++#ifndef ELITEFORCE
+ 	case G_FS_SEEK:
+ 		return FS_Seek( args[1], args[2], args[3] );
+-
++#endif
+ 	case G_LOCATE_GAME_DATA:
+ 		SV_LocateGameData( VMA(1), args[2], args[3], VMA(4), args[5] );
+ 		return 0;
+@@ -373,14 +374,18 @@
+ 		return SV_AreaEntities( VMA(1), VMA(2), VMA(3), args[4] );
+ 	case G_ENTITY_CONTACT:
+ 		return SV_EntityContact( VMA(1), VMA(2), VMA(3), /*int capsule*/ qfalse );
++#ifndef ELITEFORCE
+ 	case G_ENTITY_CONTACTCAPSULE:
+ 		return SV_EntityContact( VMA(1), VMA(2), VMA(3), /*int capsule*/ qtrue );
++#endif
+ 	case G_TRACE:
+ 		SV_Trace( VMA(1), VMA(2), VMA(3), VMA(4), VMA(5), args[6], args[7], /*int capsule*/ qfalse );
+ 		return 0;
++#ifndef ELITEFORCE
+ 	case G_TRACECAPSULE:
+ 		SV_Trace( VMA(1), VMA(2), VMA(3), VMA(4), VMA(5), args[6], args[7], /*int capsule*/ qtrue );
+ 		return 0;
++#endif
+ 	case G_POINT_CONTENTS:
+ 		return SV_PointContents( VMA(1), args[2] );
+ 	case G_SET_BRUSH_MODEL:
+@@ -439,12 +444,13 @@
+ 	case G_DEBUG_POLYGON_DELETE:
+ 		BotImport_DebugPolygonDelete( args[1] );
+ 		return 0;
++#ifndef ELITEFORCE
+ 	case G_REAL_TIME:
+ 		return Com_RealTime( VMA(1) );
+ 	case G_SNAPVECTOR:
+ 		Sys_SnapVector( VMA(1) );
+ 		return 0;
+-
++#endif
+ 		//====================================
+ 
+ 	case BOTLIB_SETUP:
+@@ -456,6 +462,10 @@
+ 	case BOTLIB_LIBVAR_GET:
+ 		return botlib_export->BotLibVarGet( VMA(1), VMA(2), args[3] );
+ 
++#ifdef ELITEFORCE
++	case BOTLIB_DEFINE:
++		return botlib_export->PC_AddGlobalDefine( VMA(1) );
++#else
+ 	case BOTLIB_PC_ADD_GLOBAL_DEFINE:
+ 		return botlib_export->PC_AddGlobalDefine( VMA(1) );
+ 	case BOTLIB_PC_LOAD_SOURCE:
+@@ -466,7 +476,7 @@
+ 		return botlib_export->PC_ReadTokenHandle( args[1], VMA(2) );
+ 	case BOTLIB_PC_SOURCE_FILE_AND_LINE:
+ 		return botlib_export->PC_SourceFileAndLine( args[1], VMA(2), VMA(3) );
+-
++#endif
+ 	case BOTLIB_START_FRAME:
+ 		return botlib_export->BotLibStartFrame( VMF(1) );
+ 	case BOTLIB_LOAD_MAP:
+@@ -483,13 +493,14 @@
+ 	case BOTLIB_USER_COMMAND:
+ 		SV_ClientThink( &svs.clients[args[1]], VMA(2) );
+ 		return 0;
+-
++#ifndef ELITEFORCE
+ 	case BOTLIB_AAS_BBOX_AREAS:
+ 		return botlib_export->aas.AAS_BBoxAreas( VMA(1), VMA(2), VMA(3), args[4] );
+ 	case BOTLIB_AAS_AREA_INFO:
+ 		return botlib_export->aas.AAS_AreaInfo( args[1], VMA(2) );
+ 	case BOTLIB_AAS_ALTERNATIVE_ROUTE_GOAL:
+ 		return botlib_export->aas.AAS_AlternativeRouteGoals( VMA(1), args[2], VMA(3), args[4], args[5], VMA(6), args[7], args[8] );
++#endif
+ 	case BOTLIB_AAS_ENTITY_INFO:
+ 		botlib_export->aas.AAS_EntityInfo( args[1], VMA(2) );
+ 		return 0;
+@@ -504,8 +515,10 @@
+ 
+ 	case BOTLIB_AAS_POINT_AREA_NUM:
+ 		return botlib_export->aas.AAS_PointAreaNum( VMA(1) );
++#ifndef ELITEFORCE
+ 	case BOTLIB_AAS_POINT_REACHABILITY_AREA_INDEX:
+ 		return botlib_export->aas.AAS_PointReachabilityAreaIndex( VMA(1) );
++#endif
+ 	case BOTLIB_AAS_TRACE_AREAS:
+ 		return botlib_export->aas.AAS_TraceAreas( VMA(1), VMA(2), VMA(3), VMA(4), args[5] );
+ 
+@@ -527,11 +540,12 @@
+ 
+ 	case BOTLIB_AAS_AREA_TRAVEL_TIME_TO_GOAL_AREA:
+ 		return botlib_export->aas.AAS_AreaTravelTimeToGoalArea( args[1], VMA(2), args[3], args[4] );
++#ifndef ELITEFORCE
+ 	case BOTLIB_AAS_ENABLE_ROUTING_AREA:
+ 		return botlib_export->aas.AAS_EnableRoutingArea( args[1], args[2] );
+ 	case BOTLIB_AAS_PREDICT_ROUTE:
+ 		return botlib_export->aas.AAS_PredictRoute( VMA(1), args[2], VMA(3), args[4], args[5], args[6], args[7], args[8], args[9], args[10], args[11] );
+-
++#endif
+ 	case BOTLIB_AAS_SWIMMING:
+ 		return botlib_export->aas.AAS_Swimming( VMA(1) );
+ 	case BOTLIB_AAS_PREDICT_CLIENT_MOVEMENT:
+@@ -548,9 +562,11 @@
+ 		botlib_export->ea.EA_Command( args[1], VMA(2) );
+ 		return 0;
+ 
++#ifndef ELITEFORCE
+ 	case BOTLIB_EA_ACTION:
+ 		botlib_export->ea.EA_Action( args[1], args[2] );
+ 		break;
++#endif
+ 	case BOTLIB_EA_GESTURE:
+ 		botlib_export->ea.EA_Gesture( args[1] );
+ 		return 0;
+@@ -680,7 +696,11 @@
+ 		botlib_export->ai.BotSetChatGender( args[1], args[2] );
+ 		return 0;
+ 	case BOTLIB_AI_SET_CHAT_NAME:
++#ifdef ELITEFORCE
++		botlib_export->ai.BotSetChatName( args[1], VMA(2));
++#else
+ 		botlib_export->ai.BotSetChatName( args[1], VMA(2), args[3] );
++#endif
+ 		return 0;
+ 
+ 	case BOTLIB_AI_RESET_GOAL_STATE:
+@@ -730,9 +750,11 @@
+ 		return botlib_export->ai.BotGetMapLocationGoal( VMA(1), VMA(2) );
+ 	case BOTLIB_AI_AVOID_GOAL_TIME:
+ 		return FloatAsInt( botlib_export->ai.BotAvoidGoalTime( args[1], args[2] ) );
++#ifndef ELITEFORCE
+ 	case BOTLIB_AI_SET_AVOID_GOAL_TIME:
+ 		botlib_export->ai.BotSetAvoidGoalTime( args[1], args[2], VMF(3));
+ 		return 0;
++#endif
+ 	case BOTLIB_AI_INIT_LEVEL_ITEMS:
+ 		botlib_export->ai.BotInitLevelItems();
+ 		return 0;
+@@ -762,9 +784,11 @@
+ 	case BOTLIB_AI_RESET_MOVE_STATE:
+ 		botlib_export->ai.BotResetMoveState( args[1] );
+ 		return 0;
++#ifndef ELITEFORCE
+ 	case BOTLIB_AI_ADD_AVOID_SPOT:
+ 		botlib_export->ai.BotAddAvoidSpot( args[1], VMA(2), VMF(3), args[4] );
+ 		return 0;
++#endif
+ 	case BOTLIB_AI_MOVE_TO_GOAL:
+ 		botlib_export->ai.BotMoveToGoal( VMA(1), args[2], VMA(3), args[4] );
+ 		return 0;
+@@ -852,7 +876,23 @@
+ 	case TRAP_CEIL:
+ 		return FloatAsInt( ceil( VMF(1) ) );
+ 
+-
++#ifdef ELITEFORCE
++	case BOTLIB_EA_USE_ITEM:
++		botlib_export->ea.EA_UseItem(args[1], VMA(2));
++		return 0;
++	case BOTLIB_EA_DROP_ITEM:
++		botlib_export->ea.EA_DropItem(args[1], VMA(2));
++		return 0;
++	case BOTLIB_EA_USE_INV:
++		botlib_export->ea.EA_UseInv(args[1], VMA(2));
++		return 0;
++	case BOTLIB_EA_DROP_INV:
++		botlib_export->ea.EA_DropInv(args[1], VMA(2));
++		return 0;
++	case BOTLIB_EA_ALT_ATTACK:
++		botlib_export->ea.EA_Attack( args[1] );
++		return 0;
++#endif
+ 	default:
+ 		Com_Error( ERR_DROP, "Bad game system trap: %i", args[0] );
+ 	}
+Index: code/server/sv_client.c
+===================================================================
+--- code/server/sv_client.c	(revision 787)
++++ code/server/sv_client.c	(working copy)
+@@ -88,6 +88,17 @@
+ 		return;
+ 	}
+ 
++#ifdef ELITEFORCE
++	NET_OutOfBandPrint( NS_SERVER, challenge->adr, 
++		"challengeResponse %i", challenge->challenge );
++#else	
++	// if they are on a lan address, send the challengeResponse immediately
++	if ( Sys_IsLANAddress( from ) ) {
++		challenge->pingTime = svs.time;
++		NET_OutOfBandPrint( NS_SERVER, from, "challengeResponse %i", challenge->challenge );
++		return;
++	}
++
+ 	// look up the authorize server's IP
+ 	if ( !svs.authorizeAddress.ip[0] && svs.authorizeAddress.type != NA_BAD ) {
+ 		Com_Printf( "Resolving %s\n", AUTHORIZE_SERVER_NAME );
+@@ -133,6 +144,7 @@
+ 			"getIpAuthorize %i %i.%i.%i.%i %s 0 %s",  svs.challenges[i].challenge,
+ 			from.ip[0], from.ip[1], from.ip[2], from.ip[3], game, sv_strictAuth->string );
+ 	}
++#endif
+ }
+ 
+ /*
+@@ -247,7 +259,12 @@
+ 	Q_strncpyz( userinfo, Cmd_Argv(1), sizeof(userinfo) );
+ 
+ 	version = atoi( Info_ValueForKey( userinfo, "protocol" ) );
+-	if ( version != PROTOCOL_VERSION ) {
++#ifdef ELITEFORCE
++	if(version != EFPROTOCOL_VERSION && version != PROTOCOL_VERSION)
++#else
++	if ( version != PROTOCOL_VERSION )
++#endif
++	{
+ 		NET_OutOfBandPrint( NS_SERVER, from, "print\nServer uses protocol version %i.\n", PROTOCOL_VERSION );
+ 		Com_DPrintf ("    rejected connect from version %i\n", version);
+ 		return;
+@@ -408,6 +425,7 @@
+ 	ent = SV_GentityNum( clientNum );
+ 	newcl->gentity = ent;
+ 
++
+ 	// save the challenge
+ 	newcl->challenge = challenge;
+ 
+@@ -416,6 +434,15 @@
+ 	// init the netchan queue
+ 	newcl->netchan_end_queue = &newcl->netchan_start_queue;
+ 
++#ifdef ELITEFORCE
++	if(version == EFPROTOCOL_VERSION)
++	{
++		newcl->compat = qtrue;
++		newcl->netchan.compat = qtrue;
++	}
++#endif
++
++
+ 	// save the userinfo
+ 	Q_strncpyz( newcl->userinfo, userinfo, sizeof(newcl->userinfo) );
+ 
+@@ -509,7 +536,12 @@
+ 	VM_Call( gvm, GAME_CLIENT_DISCONNECT, drop - svs.clients );
+ 
+ 	// add the disconnect command
+-	SV_SendServerCommand( drop, "disconnect \"%s\"", reason);
++#ifdef ELITEFORCE
++	if(drop->compat)
++		SV_SendServerCommand( drop, "disconnect %s", reason);
++	else
++#endif
++		SV_SendServerCommand( drop, "disconnect \"%s\"", reason);
+ 
+ 	if ( drop->netchan.remoteAddress.type == NA_BOT ) {
+ 		SV_BotFreeClient( drop - svs.clients );
+@@ -560,11 +592,23 @@
+ 	// gamestate message was not just sent, forcing a retransmit
+ 	client->gamestateMessageNum = client->netchan.outgoingSequence;
+ 
+-	MSG_Init( &msg, msgBuffer, sizeof( msgBuffer ) );
++#ifdef ELITEFORCE
++	if(client->compat)
++		MSG_InitOOB(&msg, msgBuffer, sizeof( msgBuffer ) );
++	else
++#endif
++		MSG_Init( &msg, msgBuffer, sizeof( msgBuffer ) );
+ 
++#ifdef ELITEFORCE
++	msg.compat = client->compat;
++#endif
++
+ 	// NOTE, MRE: all server->client messages now acknowledge
+ 	// let the client know which reliable clientCommands we have received
+-	MSG_WriteLong( &msg, client->lastClientCommand );
++#ifdef ELITEFORCE
++	if(!msg.compat)
++#endif
++		MSG_WriteLong( &msg, client->lastClientCommand );
+ 
+ 	// send any server commands waiting to be sent first.
+ 	// we have to do this cause we send the client->reliableSequence
+@@ -596,9 +640,17 @@
+ 		MSG_WriteDeltaEntity( &msg, &nullstate, base, qtrue );
+ 	}
+ 
+-	MSG_WriteByte( &msg, svc_EOF );
++#ifdef ELITEFORCE
++	if(msg.compat)
++		MSG_WriteByte(&msg, 0);
++	else
++#endif	
++		MSG_WriteByte( &msg, svc_EOF );
+ 
+-	MSG_WriteLong( &msg, client - svs.clients);
++#ifdef ELITEFORCE
++	if(!msg.compat)
++#endif
++		MSG_WriteLong( &msg, client - svs.clients);
+ 
+ 	// write the checksum feed
+ 	MSG_WriteLong( &msg, sv.checksumFeed);
+@@ -756,7 +808,10 @@
+ 	int curindex;
+ 	int rate;
+ 	int blockspersnap;
+-	int idPack = 0, missionPack = 0, unreferenced = 1;
++	int idPack = 0, unreferenced = 1;
++#ifndef ELITEFORCE
++	int missionPack = 0;
++#endif
+ 	char errorMessage[1024];
+ 	char pakbuf[MAX_QPATH], *pakptr;
+ 	int numRefPaks;
+@@ -791,8 +846,12 @@
+ 
+ 						// now that we know the file is referenced,
+ 						// check whether it's legal to download it.
++						#ifdef ELITEFORCE
++						idPack = FS_idPak(pakbuf, BASEGAME);
++						#else
+ 						missionPack = FS_idPak(pakbuf, "missionpack");
+ 						idPack = missionPack || FS_idPak(pakbuf, BASEGAME);
++						#endif
+ 
+ 						break;
+ 					}
+@@ -810,6 +869,10 @@
+ 				Com_sprintf(errorMessage, sizeof(errorMessage), "File \"%s\" is not referenced and cannot be downloaded.", cl->downloadName);
+ 			}
+ 			else if (idPack) {
++#ifdef ELITEFORCE
++				Com_Printf("clientDownload: %d : \"%s\" cannot download Raven pk3 files\n", cl - svs.clients, cl->downloadName);
++				Com_sprintf(errorMessage, sizeof(errorMessage), "Cannot autodownload Raven pk3 file \"%s\"", cl->downloadName);
++#else
+ 				Com_Printf("clientDownload: %d : \"%s\" cannot download id pk3 files\n", cl - svs.clients, cl->downloadName);
+ 				if (missionPack) {
+ 					Com_sprintf(errorMessage, sizeof(errorMessage), "Cannot autodownload Team Arena file \"%s\"\n"
+@@ -818,6 +881,7 @@
+ 				else {
+ 					Com_sprintf(errorMessage, sizeof(errorMessage), "Cannot autodownload id pk3 file \"%s\"", cl->downloadName);
+ 				}
++#endif
+ 			} else if ( !sv_allowDownload->integer ) {
+ 				Com_Printf("clientDownload: %d : \"%s\" download disabled", cl - svs.clients, cl->downloadName);
+ 				if (sv_pure->integer) {
+@@ -839,7 +903,10 @@
+ 			MSG_WriteByte( msg, svc_download );
+ 			MSG_WriteShort( msg, 0 ); // client is expecting block zero
+ 			MSG_WriteLong( msg, -1 ); // illegal file size
+-			MSG_WriteString( msg, errorMessage );
++			#ifdef ELITEFORCE
++				if(!msg->compat)
++			#endif
++					MSG_WriteString( msg, errorMessage );
+ 
+ 			*cl->downloadName = 0;
+ 			return;
+@@ -1007,21 +1074,28 @@
+ 		// start at arg 2 ( skip serverId cl_paks )
+ 		nCurArg = 1;
+ 
+-		pArg = Cmd_Argv(nCurArg++);
+-		if(!pArg) {
+-			bGood = qfalse;
+-		}
+-		else
++		#ifdef ELITEFORCE
++		if(!cl->compat)
+ 		{
+-			// https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=475
+-			// we may get incoming cp sequences from a previous checksumFeed, which we need to ignore
+-			// since serverId is a frame count, it always goes up
+-			if (atoi(pArg) < sv.checksumFeedServerId)
++		#endif
++			pArg = Cmd_Argv(nCurArg++);
++			if(!pArg) {
++				bGood = qfalse;
++			}
++			else
+ 			{
+-				Com_DPrintf("ignoring outdated cp command from client %s\n", cl->name);
+-				return;
++				// https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=475
++				// we may get incoming cp sequences from a previous checksumFeed, which we need to ignore
++				// since serverId is a frame count, it always goes up
++				if (atoi(pArg) < sv.checksumFeedServerId)
++				{
++					Com_DPrintf("ignoring outdated cp command from client %s\n", cl->name);
++					return;
++				}
+ 			}
++		#ifdef ELITEFORCE
+ 		}
++		#endif
+ 	
+ 		// we basically use this while loop to avoid using 'goto' :)
+ 		while (bGood) {
+@@ -1368,7 +1442,10 @@
+ ==================
+ */
+ static void SV_UserMove( client_t *cl, msg_t *msg, qboolean delta ) {
+-	int			i, key;
++	int			i;
++#ifndef ELITEFORCE
++	int			key;
++#endif
+ 	int			cmdCount;
+ 	usercmd_t	nullcmd;
+ 	usercmd_t	cmds[MAX_PACKET_USERCMDS];
+@@ -1392,6 +1469,7 @@
+ 		return;
+ 	}
+ 
++	#ifndef ELITEFORCE
+ 	// use the checksum feed in the key
+ 	key = sv.checksumFeed;
+ 	// also use the message acknowledge
+@@ -1399,11 +1477,17 @@
+ 	// also use the last acknowledged server command in the key
+ 	key ^= Com_HashKey(cl->reliableCommands[ cl->reliableAcknowledge & (MAX_RELIABLE_COMMANDS-1) ], 32);
+ 
++	#endif
++
+ 	Com_Memset( &nullcmd, 0, sizeof(nullcmd) );
+ 	oldcmd = &nullcmd;
+ 	for ( i = 0 ; i < cmdCount ; i++ ) {
+ 		cmd = &cmds[i];
++		#ifdef ELITEFORCE
++		MSG_ReadDeltaUsercmd( msg, oldcmd, cmd );
++		#else
+ 		MSG_ReadDeltaUsercmdKey( msg, key, oldcmd, cmd );
++		#endif
+ 		oldcmd = cmd;
+ 	}
+ 
+@@ -1483,7 +1567,10 @@
+ 	int			c;
+ 	int			serverId;
+ 
+-	MSG_Bitstream(msg);
++#ifdef ELITEFORCE
++	if(!msg->compat)
++		MSG_Bitstream(msg);
++#endif
+ 
+ 	serverId = MSG_ReadLong( msg );
+ 	cl->messageAcknowledge = MSG_ReadLong( msg );
+@@ -1548,9 +1635,12 @@
+ 	// read optional clientCommand strings
+ 	do {
+ 		c = MSG_ReadByte( msg );
+-		if ( c == clc_EOF ) {
++		#ifdef ELITEFORCE
++		if(msg->compat && c == -1)
++			c = clc_EOF;
++		#endif
++		if ( c == clc_EOF )
+ 			break;
+-		}
+ 		if ( c != clc_clientCommand ) {
+ 			break;
+ 		}
+Index: code/server/sv_net_chan.c
+===================================================================
+--- code/server/sv_net_chan.c	(revision 787)
++++ code/server/sv_net_chan.c	(working copy)
+@@ -24,6 +24,7 @@
+ #include "../qcommon/qcommon.h"
+ #include "server.h"
+ 
++#ifndef ELITEFORCE
+ /*
+ ==============
+ SV_Netchan_Encode
+@@ -125,6 +126,7 @@
+ 		*(msg->data + i) = *(msg->data + i) ^ key;
+ 	}
+ }
++#endif
+ 
+ /*
+ =================
+@@ -144,7 +146,9 @@
+ 			netchan_buffer_t *netbuf;
+ 			Com_DPrintf("#462 Netchan_TransmitNextFragment: popping a queued message for transmit\n");
+ 			netbuf = client->netchan_start_queue;
++			#ifndef ELITEFORCE
+ 			SV_Netchan_Encode( client, &netbuf->msg );
++			#endif
+ 			Netchan_Transmit( &client->netchan, netbuf->msg.cursize, netbuf->msg.data );
+ 			// pop from queue
+ 			client->netchan_start_queue = netbuf->next;
+@@ -172,7 +176,11 @@
+ */
+ 
+ void SV_Netchan_Transmit( client_t *client, msg_t *msg) {	//int length, const byte *data ) {
+-	MSG_WriteByte( msg, svc_EOF );
++	#ifdef ELITEFORCE
++	if(!msg->compat)
++	#endif
++		MSG_WriteByte( msg, svc_EOF );
++	
+ 	if (client->netchan.unsentFragments) {
+ 		netchan_buffer_t *netbuf;
+ 		Com_DPrintf("#462 SV_Netchan_Transmit: unsent fragments, stacked\n");
+@@ -186,7 +194,9 @@
+ 		// emit the next fragment of the current message for now
+ 		Netchan_TransmitNextFragment(&client->netchan);
+ 	} else {
++#ifndef ELITEFORCE
+ 		SV_Netchan_Encode( client, msg );
++#endif
+ 		Netchan_Transmit( &client->netchan, msg->cursize, msg->data );
+ 	}
+ }
+@@ -201,7 +211,9 @@
+ 	ret = Netchan_Process( &client->netchan, msg );
+ 	if (!ret)
+ 		return qfalse;
++#ifndef ELITEFORCE
+ 	SV_Netchan_Decode( client, msg );
++#endif
+ 	return qtrue;
+ }
+ 
+Index: code/server/sv_snapshot.c
+===================================================================
+--- code/server/sv_snapshot.c	(revision 787)
++++ code/server/sv_snapshot.c	(working copy)
+@@ -154,6 +154,12 @@
+ 
+ 	MSG_WriteByte (msg, svc_snapshot);
+ 
++	#ifdef ELITEFORCE
++        if(msg->compat)
++        #endif
++		MSG_WriteLong( msg, client->lastClientCommand );
++                        
++
+ 	// NOTE, MRE: now sent at the start of every message from server to client
+ 	// let the client know which reliable clientCommands we have received
+ 	//MSG_WriteLong( msg, client->lastClientCommand );
+@@ -417,6 +423,7 @@
+ 
+ 		// if its a portal entity, add everything visible from its camera position
+ 		if ( ent->r.svFlags & SVF_PORTAL ) {
++#ifndef ELITEFORCE
+ 			if ( ent->s.generic1 ) {
+ 				vec3_t dir;
+ 				VectorSubtract(ent->s.origin, origin, dir);
+@@ -424,6 +431,7 @@
+ 					continue;
+ 				}
+ 			}
++#endif
+ 			SV_AddEntitiesVisibleFromPoint( ent->s.origin2, frame, eNums, qtrue );
+ 		}
+ 
+@@ -630,12 +638,23 @@
+ 		return;
+ 	}
+ 
+-	MSG_Init (&msg, msg_buf, sizeof(msg_buf));
++#ifdef ELITEFORCE
++	if(client->compat)
++	{
++		MSG_InitOOB(&msg, msg_buf, sizeof(msg_buf));
++		msg.compat = qtrue;
++	}
++	else
++#endif
++		MSG_Init (&msg, msg_buf, sizeof(msg_buf));
+ 	msg.allowoverflow = qtrue;
+ 
+ 	// NOTE, MRE: all server->client messages now acknowledge
+ 	// let the client know which reliable clientCommands we have received
+-	MSG_WriteLong( &msg, client->lastClientCommand );
++#ifdef ELITEFORCE
++	if(!client->compat)
++#endif
++		MSG_WriteLong( &msg, client->lastClientCommand );
+ 
+ 	// (re)send any reliable server commands
+ 	SV_UpdateServerCommandsToClient( client, &msg );
+Index: code/server/server.h
+===================================================================
+--- code/server/server.h	(revision 787)
++++ code/server/server.h	(working copy)
+@@ -168,6 +168,8 @@
+ 	netchan_buffer_t **netchan_end_queue;
+ 
+ 	int				oldServerTime;
++	
++	qboolean		compat;		// compatibility mode for original EliteForce
+ } client_t;
+ 
+ //=============================================================================
+Index: code/server/sv_init.c
+===================================================================
+--- code/server/sv_init.c	(revision 787)
++++ code/server/sv_init.c	(working copy)
+@@ -576,7 +576,11 @@
+ 	Cvar_Get ("timelimit", "0", CVAR_SERVERINFO);
+ 	sv_gametype = Cvar_Get ("g_gametype", "0", CVAR_SERVERINFO | CVAR_LATCH );
+ 	Cvar_Get ("sv_keywords", "", CVAR_SERVERINFO);
++#ifdef ELITEFORCE
++	Cvar_Get ("protocol", va("%i", EFPROTOCOL_VERSION), CVAR_SERVERINFO | CVAR_ROM);
++#else
+ 	Cvar_Get ("protocol", va("%i", PROTOCOL_VERSION), CVAR_SERVERINFO | CVAR_ROM);
++#endif
+ 	sv_mapname = Cvar_Get ("mapname", "nomap", CVAR_SERVERINFO | CVAR_ROM);
+ 	sv_privateClients = Cvar_Get ("sv_privateClients", "0", CVAR_SERVERINFO);
+ 	sv_hostname = Cvar_Get ("sv_hostname", "noname", CVAR_SERVERINFO | CVAR_ARCHIVE );
+@@ -606,8 +610,13 @@
+ 
+ 	sv_allowDownload = Cvar_Get ("sv_allowDownload", "0", CVAR_SERVERINFO);
+ 	sv_master[0] = Cvar_Get ("sv_master1", MASTER_SERVER_NAME, 0 );
++	#ifdef ELITEFORCE
++	sv_master[1] = Cvar_Get ("sv_master2", "master.thewizclan.com", CVAR_ARCHIVE );
++	sv_master[2] = Cvar_Get ("sv_master3", "efmaster.kickchat.com", CVAR_ARCHIVE );
++	#else
+ 	sv_master[1] = Cvar_Get ("sv_master2", "", CVAR_ARCHIVE );
+ 	sv_master[2] = Cvar_Get ("sv_master3", "", CVAR_ARCHIVE );
++	#endif
+ 	sv_master[3] = Cvar_Get ("sv_master4", "", CVAR_ARCHIVE );
+ 	sv_master[4] = Cvar_Get ("sv_master5", "", CVAR_ARCHIVE );
+ 	sv_reconnectlimit = Cvar_Get ("sv_reconnectlimit", "3", 0);
+@@ -647,7 +656,13 @@
+ 				// don't send a disconnect to a local client
+ 				if ( cl->netchan.remoteAddress.type != NA_LOOPBACK ) {
+ 					SV_SendServerCommand( cl, "print \"%s\n\"\n", message );
+-					SV_SendServerCommand( cl, "disconnect" );
++					
++					#ifdef ELITEFORCE
++					if(cl->compat)
++						SV_SendServerCommand(cl, "disconnect Server shutdown.");
++					else
++					#endif
++						SV_SendServerCommand( cl, "disconnect" );
+ 				}
+ 				// force a snapshot to be sent
+ 				cl->nextSnapshotTime = -1;
+Index: code/server/sv_main.c
+===================================================================
+--- code/server/sv_main.c	(revision 787)
++++ code/server/sv_main.c	(working copy)
+@@ -220,7 +220,11 @@
+ ================
+ */
+ #define	HEARTBEAT_MSEC	300*1000
++#ifdef ELITEFORCE
++#define HEARTBEAT_GAME "STEF1"
++#else
+ #define	HEARTBEAT_GAME	"QuakeArena-1"
++#endif
+ void SV_MasterHeartbeat( void ) {
+ 	static netadr_t	adr[MAX_MASTER_SERVERS];
+ 	int			i;
+@@ -270,7 +274,12 @@
+ 		Com_Printf ("Sending heartbeat to %s\n", sv_master[i]->string );
+ 		// this command should be changed if the server info / status format
+ 		// ever incompatably changes
++		#ifdef ELITEFORCE
++		NET_OutOfBandPrint(NS_SERVER, adr[i], "\\heartbeat\\%d\\gamename\\%s\\",
++				   Cvar_VariableIntegerValue("net_port"),  HEARTBEAT_GAME);
++		#else
+ 		NET_OutOfBandPrint( NS_SERVER, adr[i], "heartbeat %s\n", HEARTBEAT_GAME );
++		#endif
+ 	}
+ }
+ 
+@@ -400,17 +409,22 @@
+ 
+ 	infostring[0] = 0;
+ 
+-	// echo back the parameter to status. so servers can use it as a challenge
+-	// to prevent timed spoofed reply packets that add ghost servers
+-	Info_SetValueForKey( infostring, "challenge", Cmd_Argv(1) );
+-
++#ifdef ELITEFORCE
++	Info_SetValueForKey( infostring, "protocol", va("%i", EFPROTOCOL_VERSION) );
++#else
+ 	Info_SetValueForKey( infostring, "protocol", va("%i", PROTOCOL_VERSION) );
++#endif
+ 	Info_SetValueForKey( infostring, "hostname", sv_hostname->string );
+ 	Info_SetValueForKey( infostring, "mapname", sv_mapname->string );
+ 	Info_SetValueForKey( infostring, "clients", va("%i", count) );
+ 	Info_SetValueForKey( infostring, "sv_maxclients", 
+ 		va("%i", sv_maxclients->integer - sv_privateClients->integer ) );
+ 	Info_SetValueForKey( infostring, "gametype", va("%i", sv_gametype->integer ) );
++
++	// echo back the parameter to status. so servers can use it as a challenge
++	// to prevent timed spoofed reply packets that add ghost servers
++	Info_SetValueForKey( infostring, "challenge", Cmd_Argv(1) );
++
+ 	Info_SetValueForKey( infostring, "pure", va("%i", sv_pure->integer ) );
+ 
+ 	if( sv_minPing->integer ) {
+@@ -424,7 +438,15 @@
+ 		Info_SetValueForKey( infostring, "game", gamedir );
+ 	}
+ 
++	// echo back the parameter to status. so servers can use it as a challenge
++	// to prevent timed spoofed reply packets that add ghost servers
++	Info_SetValueForKey( infostring, "challenge", Cmd_Argv(1) );
++
++#ifdef ELITEFORCE
++	NET_OutOfBandPrint( NS_SERVER, from, "infoResponse \"%s\"", infostring );
++#else
+ 	NET_OutOfBandPrint( NS_SERVER, from, "infoResponse\n%s", infostring );
++#endif
+ }
+ 
+ /*
+@@ -523,9 +545,11 @@
+ 	MSG_BeginReadingOOB( msg );
+ 	MSG_ReadLong( msg );		// skip the -1 marker
+ 
++#ifndef ELITEFORCE
+ 	if (!Q_strncmp("connect", (char *) &msg->data[4], 7)) {
+ 		Huff_Decompress(msg, 12);
+ 	}
++#endif
+ 
+ 	s = MSG_ReadStringLine( msg );
+ 	Cmd_TokenizeString( s );
+@@ -601,6 +625,10 @@
+ 			cl->netchan.remoteAddress.port = from.port;
+ 		}
+ 
++		#ifdef ELITEFORCE
++		msg->compat = cl->compat;
++		#endif
++
+ 		// make sure it is a valid, in sequence packet
+ 		if (SV_Netchan_Process(cl, msg)) {
+ 			// zombie clients still need to do the Netchan_Process
+Index: code/game/g_local.h
+===================================================================
+--- code/game/g_local.h	(revision 787)
++++ code/game/g_local.h	(working copy)
+@@ -30,6 +30,7 @@
+ 
+ // the "gameversion" client command will print this plus compile date
+ #define	GAMEVERSION	BASEGAME
++#endif
+ 
+ #define BODY_QUEUE_SIZE		8
+ 
+Index: code/game/g_public.h
+===================================================================
+--- code/game/g_public.h	(revision 787)
++++ code/game/g_public.h	(working copy)
+@@ -33,9 +33,19 @@
+ 
+ // TTimo
+ // https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=551
++#ifdef ELITEFORCE
++#define SVF_SHIELD_BBOX			0x00000002
++#define SVF_CLIENTMASK			0x00000004
++#else
+ #define SVF_CLIENTMASK 0x00000002
++#endif
+ 
+ #define SVF_BOT					0x00000008	// set if the entity is a bot
++
++#ifdef ELITEFORCE
++#define SVF_ELIMINATED			0x00000010
++#endif
++
+ #define	SVF_BROADCAST			0x00000020	// send to all connected clients
+ #define	SVF_PORTAL				0x00000040	// merge a second pvs at origin2 into snapshots
+ #define	SVF_USE_CURRENT_ORIGIN	0x00000080	// entity->r.currentOrigin instead of entity->s.origin
+@@ -54,7 +64,9 @@
+ 
+ 
+ typedef struct {
++#ifndef ELITEFORCE
+ 	entityState_t	s;				// communicated by server to clients
++#endif
+ 
+ 	qboolean	linked;				// qfalse if not in any good cluster
+ 	int			linkcount;
+@@ -103,7 +115,281 @@
+ //
+ // system traps provided by the main engine
+ //
++#ifdef ELITEFORCE
+ typedef enum {
++        //============== general Quake services ==================
++
++        G_PRINT,                // ( const char *string );
++        // print message on the local console
++
++        G_ERROR,                // ( const char *string );
++        // abort the game
++
++        G_MILLISECONDS, // ( void );
++        // get current time for profiling reasons
++        // this should NOT be used for any game related tasks,
++        // because it is not journaled
++
++        // console variable interaction
++        G_CVAR_REGISTER,        // ( vmCvar_t *vmCvar, const char *varName, const char *defaultValue, int flags );
++        G_CVAR_UPDATE,  // ( vmCvar_t *vmCvar );
++        G_CVAR_SET,             // ( const char *var_name, const char *value );
++        G_CVAR_VARIABLE_INTEGER_VALUE,  // ( const char *var_name );
++
++        G_CVAR_VARIABLE_STRING_BUFFER,  // ( const char *var_name, char *buffer, int bufsize );
++
++        G_ARGC,                 // ( void );
++        // ClientCommand and ServerCommand parameter access
++
++        G_ARGV,                 // ( int n, char *buffer, int bufferLength );
++
++        G_FS_FOPEN_FILE,        // ( const char *qpath, fileHandle_t *file, fsMode_t mode );
++        G_FS_READ,              // ( void *buffer, int len, fileHandle_t f );
++        G_FS_WRITE,             // ( const void *buffer, int len, fileHandle_t f );
++        G_FS_FCLOSE_FILE,               // ( fileHandle_t f );
++
++        G_SEND_CONSOLE_COMMAND, // ( const char *text );
++        // add commands to the console as if they were typed in
++        // for map changing, etc
++
++
++        //=========== server specific functionality =============
++
++        G_LOCATE_GAME_DATA,             // ( gentity_t *gEnts, int numGEntities, int sizeofGEntity_t,
++        //                                                      playerState_t *clients, int sizeofGameClient );
++        // the game needs to let the server system know where and how big the gentities
++        // are, so it can look at them directly without going through an interface
++
++        G_DROP_CLIENT,          // ( int clientNum, const char *reason );
++        // kick a client off the server with a message
++
++        G_SEND_SERVER_COMMAND,  // ( int clientNum, const char *fmt, ... );
++        // reliably sends a command string to be interpreted by the given
++        // client.  If clientNum is -1, it will be sent to all clients
++
++        G_SET_CONFIGSTRING,     // ( int num, const char *string );
++        // config strings hold all the index strings, and various other information
++        // that is reliably communicated to all clients
++        // All of the current configstrings are sent to clients when
++        // they connect, and changes are sent to all connected clients.
++        // All confgstrings are cleared at each level start.
++
++        G_GET_CONFIGSTRING,     // ( int num, char *buffer, int bufferSize );
++
++        G_GET_USERINFO,         // ( int num, char *buffer, int bufferSize );
++        // userinfo strings are maintained by the server system, so they
++        // are persistant across level loads, while all other game visible
++        // data is completely reset
++
++        G_SET_USERINFO,         // ( int num, const char *buffer );
++
++        G_GET_SERVERINFO,       // ( char *buffer, int bufferSize );
++        // the serverinfo info string has all the cvars visible to server browsers
++
++        G_SET_BRUSH_MODEL,      // ( gentity_t *ent, const char *name );
++        // sets mins and maxs based on the brushmodel name
++
++        G_TRACE,        // ( trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum,
++        // collision detection against all linked entities
++
++        G_POINT_CONTENTS,       // ( const vec3_t point, int passEntityNum );
++        // point contents against all linked entities
++
++        G_IN_PVS,                       // ( const vec3_t p1, const vec3_t p2 );
++
++        G_IN_PVS_IGNORE_PORTALS,        // ( const vec3_t p1, const vec3_t p2 );
++
++        G_ADJUST_AREA_PORTAL_STATE,     // ( gentity_t *ent, qboolean open );
++
++        G_AREAS_CONNECTED,      // ( int area1, int area2 );
++
++        G_LINKENTITY,           // ( gentity_t *ent );
++        // an entity will never be sent to a client or used for collision
++        // if it is not passed to linkentity.  If the size, position, or
++        // solidity changes, it must be relinked.
++
++        G_UNLINKENTITY,         // ( gentity_t *ent );
++        // call before removing an interactive entity
++
++        G_ENTITIES_IN_BOX,      // ( const vec3_t mins, const vec3_t maxs, gentity_t **list, int maxcount );
++        // EntitiesInBox will return brush models based on their bounding box,
++        // so exact determination must still be done with EntityContact
++
++        G_ENTITY_CONTACT,       // ( const vec3_t mins, const vec3_t maxs, const gentity_t *ent );
++        // perform an exact check against inline brush models of non-square shape
++
++        // access for bots to get and free a server client (FIXME?)
++        G_BOT_ALLOCATE_CLIENT,  // ( void );
++
++        G_BOT_FREE_CLIENT,      // ( int clientNum );
++
++        G_GET_USERCMD,  // ( int clientNum, usercmd_t *cmd )
++
++        G_GET_ENTITY_TOKEN,     // qboolean ( char *buffer, int bufferSize )
++        // Retrieves the next string token from the entity spawn text, returning
++        // false when all tokens have been parsed.
++        // This should only be done at GAME_INIT time.
++
++        G_FS_GETFILELIST,
++        G_DEBUG_POLYGON_CREATE,
++        G_DEBUG_POLYGON_DELETE,
++
++        BOTLIB_SETUP = 200,                             // ( void );
++        BOTLIB_SHUTDOWN,                                // ( void );
++        BOTLIB_LIBVAR_SET,
++        BOTLIB_LIBVAR_GET,
++        BOTLIB_DEFINE,
++        BOTLIB_START_FRAME,
++        BOTLIB_LOAD_MAP,
++        BOTLIB_UPDATENTITY,
++        BOTLIB_TEST,
++
++        BOTLIB_GET_SNAPSHOT_ENTITY,             // ( int client, int ent );
++        BOTLIB_GET_CONSOLE_MESSAGE,             // ( int client, char *message, int size );
++        BOTLIB_USER_COMMAND,                    // ( int client, usercmd_t *ucmd );
++
++        BOTLIB_AAS_ENTITY_VISIBLE = 300,        //FIXME: remove
++        BOTLIB_AAS_IN_FIELD_OF_VISION,          //FIXME: remove
++        BOTLIB_AAS_VISIBLE_CLIENTS,                     //FIXME: remove
++        BOTLIB_AAS_ENTITY_INFO,
++
++        BOTLIB_AAS_INITIALIZED,
++        BOTLIB_AAS_PRESENCE_TYPE_BOUNDING_BOX,
++        BOTLIB_AAS_TIME,
++
++        BOTLIB_AAS_POINT_AREA_NUM,
++        BOTLIB_AAS_TRACE_AREAS,
++
++        BOTLIB_AAS_POINT_CONTENTS,
++        BOTLIB_AAS_NEXT_BSP_ENTITY,
++        BOTLIB_AAS_VALUE_FOR_BSP_EPAIR_KEY,
++        BOTLIB_AAS_VECTOR_FOR_BSP_EPAIR_KEY,
++        BOTLIB_AAS_FLOAT_FOR_BSP_EPAIR_KEY,
++        BOTLIB_AAS_INT_FOR_BSP_EPAIR_KEY,
++
++        BOTLIB_AAS_AREA_REACHABILITY,
++
++        BOTLIB_AAS_AREA_TRAVEL_TIME_TO_GOAL_AREA,
++
++        BOTLIB_AAS_SWIMMING,
++        BOTLIB_AAS_PREDICT_CLIENT_MOVEMENT,
++
++
++
++        BOTLIB_EA_SAY = 400,
++        BOTLIB_EA_SAY_TEAM,
++        BOTLIB_EA_USE_ITEM,
++        BOTLIB_EA_DROP_ITEM,
++        BOTLIB_EA_USE_INV,
++        BOTLIB_EA_DROP_INV,
++        BOTLIB_EA_GESTURE,
++        BOTLIB_EA_COMMAND,
++
++        BOTLIB_EA_SELECT_WEAPON,
++        BOTLIB_EA_TALK,
++        BOTLIB_EA_ATTACK,
++        BOTLIB_EA_USE,
++        BOTLIB_EA_RESPAWN,
++        BOTLIB_EA_JUMP,
++        BOTLIB_EA_DELAYED_JUMP,
++        BOTLIB_EA_CROUCH,
++        BOTLIB_EA_MOVE_UP,
++        BOTLIB_EA_MOVE_DOWN,
++        BOTLIB_EA_MOVE_FORWARD,
++        BOTLIB_EA_MOVE_BACK,
++        BOTLIB_EA_MOVE_LEFT,
++        BOTLIB_EA_MOVE_RIGHT,
++        BOTLIB_EA_MOVE,
++        BOTLIB_EA_VIEW,
++
++        BOTLIB_EA_END_REGULAR,
++        BOTLIB_EA_GET_INPUT,
++        BOTLIB_EA_RESET_INPUT,
++        BOTLIB_EA_ALT_ATTACK,
++
++
++
++        BOTLIB_AI_LOAD_CHARACTER = 500,
++        BOTLIB_AI_FREE_CHARACTER,
++        BOTLIB_AI_CHARACTERISTIC_FLOAT,
++        BOTLIB_AI_CHARACTERISTIC_BFLOAT,
++        BOTLIB_AI_CHARACTERISTIC_INTEGER,
++        BOTLIB_AI_CHARACTERISTIC_BINTEGER,
++        BOTLIB_AI_CHARACTERISTIC_STRING,
++
++        BOTLIB_AI_ALLOC_CHAT_STATE,
++        BOTLIB_AI_FREE_CHAT_STATE,
++        BOTLIB_AI_QUEUE_CONSOLE_MESSAGE,
++        BOTLIB_AI_REMOVE_CONSOLE_MESSAGE,
++        BOTLIB_AI_NEXT_CONSOLE_MESSAGE,
++        BOTLIB_AI_NUM_CONSOLE_MESSAGE,
++        BOTLIB_AI_INITIAL_CHAT,
++        BOTLIB_AI_REPLY_CHAT,
++        BOTLIB_AI_CHAT_LENGTH,
++        BOTLIB_AI_ENTER_CHAT,
++        BOTLIB_AI_STRING_CONTAINS,
++        BOTLIB_AI_FIND_MATCH,
++        BOTLIB_AI_MATCH_VARIABLE,
++        BOTLIB_AI_UNIFY_WHITE_SPACES,
++        BOTLIB_AI_REPLACE_SYNONYMS,
++        BOTLIB_AI_LOAD_CHAT_FILE,
++        BOTLIB_AI_SET_CHAT_GENDER,
++        BOTLIB_AI_SET_CHAT_NAME,
++
++        BOTLIB_AI_RESET_GOAL_STATE,
++        BOTLIB_AI_RESET_AVOID_GOALS,
++        BOTLIB_AI_PUSH_GOAL,
++        BOTLIB_AI_POP_GOAL,
++        BOTLIB_AI_EMPTY_GOAL_STACK,
++        BOTLIB_AI_DUMP_AVOID_GOALS,
++        BOTLIB_AI_DUMP_GOAL_STACK,
++        BOTLIB_AI_GOAL_NAME,
++        BOTLIB_AI_GET_TOP_GOAL,
++        BOTLIB_AI_GET_SECOND_GOAL,
++        BOTLIB_AI_CHOOSE_LTG_ITEM,
++        BOTLIB_AI_CHOOSE_NBG_ITEM,
++        BOTLIB_AI_TOUCHING_GOAL,
++        BOTLIB_AI_ITEM_GOAL_IN_VIS_BUT_NOT_VISIBLE,
++        BOTLIB_AI_GET_LEVEL_ITEM_GOAL,
++        BOTLIB_AI_AVOID_GOAL_TIME,
++        BOTLIB_AI_INIT_LEVEL_ITEMS,
++        BOTLIB_AI_UPDATE_ENTITY_ITEMS,
++        BOTLIB_AI_LOAD_ITEM_WEIGHTS,
++        BOTLIB_AI_FREE_ITEM_WEIGHTS,
++        BOTLIB_AI_SAVE_GOAL_FUZZY_LOGIC,
++        BOTLIB_AI_ALLOC_GOAL_STATE,
++        BOTLIB_AI_FREE_GOAL_STATE,
++
++        BOTLIB_AI_RESET_MOVE_STATE,
++        BOTLIB_AI_MOVE_TO_GOAL,
++        BOTLIB_AI_MOVE_IN_DIRECTION,
++        BOTLIB_AI_RESET_AVOID_REACH,
++        BOTLIB_AI_RESET_LAST_AVOID_REACH,
++        BOTLIB_AI_REACHABILITY_AREA,
++        BOTLIB_AI_MOVEMENT_VIEW_TARGET,
++        BOTLIB_AI_ALLOC_MOVE_STATE,
++        BOTLIB_AI_FREE_MOVE_STATE,
++        BOTLIB_AI_INIT_MOVE_STATE,
++
++        BOTLIB_AI_CHOOSE_BEST_FIGHT_WEAPON,
++        BOTLIB_AI_GET_WEAPON_INFO,
++        BOTLIB_AI_LOAD_WEAPON_WEIGHTS,
++        BOTLIB_AI_ALLOC_WEAPON_STATE,
++        BOTLIB_AI_FREE_WEAPON_STATE,
++        BOTLIB_AI_RESET_WEAPON_STATE,
++
++        BOTLIB_AI_GENETIC_PARENTS_AND_CHILD_SELECTION,
++        BOTLIB_AI_INTERBREED_GOAL_FUZZY_LOGIC,
++        BOTLIB_AI_MUTATE_GOAL_FUZZY_LOGIC,
++        BOTLIB_AI_GET_NEXT_CAMP_SPOT_GOAL,
++        BOTLIB_AI_GET_MAP_LOCATION_GOAL,
++        BOTLIB_AI_NUM_INITIAL_CHATS,
++        BOTLIB_AI_GET_CHAT_MESSAGE,
++        BOTLIB_AI_REMOVE_FROM_AVOID_GOALS,
++        BOTLIB_AI_PREDICT_VISIBLE_POSITION
++} gameImport_t;
++#else
++typedef enum {
+ 	//============== general Quake services ==================
+ 
+ 	G_PRINT,		// ( const char *string );
+@@ -389,8 +675,8 @@
+ 	BOTLIB_PC_SOURCE_FILE_AND_LINE
+ 
+ } gameImport_t;
++#endif
+ 
+-
+ //
+ // functions exported by the game subsystem
+ //
+Index: code/game/bg_public.h
+===================================================================
+--- code/game/bg_public.h	(revision 787)
++++ code/game/bg_public.h	(working copy)
+@@ -263,6 +263,11 @@
+ #define EF_AWARD_DENIED		0x00040000		// denied
+ #define EF_TEAMVOTED		0x00080000		// already cast a team vote
+ 
++#ifdef ELITEFORCE
++#define EF_SHIELD_BOX_X		0x00000800
++#define EF_SHIELD_BOX_Y		0x00400000
++#endif
++
+ // NOTE: may not have more than 16
+ typedef enum {
+ 	PW_NONE,
+Index: code/qcommon/surfaceflags.h
+===================================================================
+--- code/qcommon/surfaceflags.h	(revision 787)
++++ code/qcommon/surfaceflags.h	(working copy)
+@@ -41,6 +41,10 @@
+ 
+ #define	CONTENTS_PLAYERCLIP		0x10000
+ #define	CONTENTS_MONSTERCLIP	0x20000
++#ifdef ELITEFORCE
++#define CONTENTS_SHOTCLIP		0x40000
++#endif
++
+ //bot specific contents types
+ #define	CONTENTS_TELEPORTER		0x40000
+ #define	CONTENTS_JUMPPAD		0x80000
+Index: code/qcommon/net_chan.c
+===================================================================
+--- code/qcommon/net_chan.c	(revision 787)
++++ code/qcommon/net_chan.c	(working copy)
+@@ -94,7 +94,7 @@
+ }
+ 
+ // TTimo: unused, commenting out to make gcc happy
+-#if 0
++#ifdef ELITEFORCE
+ /*
+ ==============
+ Netchan_ScramblePacket
+@@ -109,7 +109,7 @@
+ 	int			i, j, c, mask, temp;
+ 	int			seq[MAX_PACKETLEN];
+ 
+-	seed = ( LittleLong( *(unsigned *)buf->data ) * 3 ) ^ ( buf->cursize * 123 );
++	seed = ( LittleLong( *(unsigned *)buf->data ) * 3 ) ^ ( buf->cursize * 123 ) ^ 0x87243987;
+ 	c = buf->cursize;
+ 	if ( c <= SCRAMBLE_START ) {
+ 		return;
+@@ -120,10 +120,15 @@
+ 
+ 	// generate a sequence of "random" numbers
+ 	for (i = 0 ; i < c ; i++) {
+-		seed = (119 * seed + 1);
++		seed = (69069 * seed + 1);
+ 		seq[i] = seed;
+ 	}
+ 
++	// byte xor the data after the header
++	for (i = SCRAMBLE_START ; i < c ; i++) {
++		buf->data[i] ^= seq[i];
++	}
++
+ 	// transpose each character
+ 	for ( mask = 1 ; mask < c-SCRAMBLE_START ; mask = ( mask << 1 ) + 1 ) {
+ 	}
+@@ -136,9 +141,9 @@
+ 	}
+ 
+ 	// byte xor the data after the header
+-	for (i = SCRAMBLE_START ; i < c ; i++) {
+-		buf->data[i] ^= seq[i];
+-	}
++//	for (i = SCRAMBLE_START ; i < c ; i++) {
++//		buf->data[i] ^= seq[i];
++//	}
+ }
+ 
+ static void Netchan_UnScramblePacket( msg_t *buf ) {
+@@ -146,7 +151,7 @@
+ 	int			i, j, c, mask, temp;
+ 	int			seq[MAX_PACKETLEN];
+ 
+-	seed = ( LittleLong( *(unsigned *)buf->data ) * 3 ) ^ ( buf->cursize * 123 );
++	seed = ( LittleLong( *(unsigned *)buf->data ) * 3 ) ^ ( buf->cursize * 123 ) ^ 0x87243987;
+ 	c = buf->cursize;
+ 	if ( c <= SCRAMBLE_START ) {
+ 		return;
+@@ -157,14 +162,14 @@
+ 
+ 	// generate a sequence of "random" numbers
+ 	for (i = 0 ; i < c ; i++) {
+-		seed = (119 * seed + 1);
++		seed = (69069 * seed + 1);
+ 		seq[i] = seed;
+ 	}
+ 
+ 	// byte xor the data after the header
+-	for (i = SCRAMBLE_START ; i < c ; i++) {
+-		buf->data[i] ^= seq[i];
+-	}
++//	for (i = SCRAMBLE_START ; i < c ; i++) {
++//		buf->data[i] ^= seq[i];
++//	}
+ 
+ 	// transpose each character in reverse order
+ 	for ( mask = 1 ; mask < c-SCRAMBLE_START ; mask = ( mask << 1 ) + 1 ) {
+@@ -176,6 +181,12 @@
+ 		buf->data[j] = buf->data[i];
+ 		buf->data[i] = temp;
+ 	}
++
++
++	// byte xor the data after the header
++	for (i = SCRAMBLE_START ; i < c ; i++) {
++		buf->data[i] ^= seq[i];
++	}
+ }
+ #endif
+ 
+@@ -211,6 +222,14 @@
+ 	MSG_WriteShort( &send, fragmentLength );
+ 	MSG_WriteData( &send, chan->unsentBuffer + chan->unsentFragmentStart, fragmentLength );
+ 
++	#ifdef ELITEFORCE
++	if(chan->compat)
++	{
++		// the original eliteforce uses the old scrambling routines only slightly modified.	
++		Netchan_ScramblePacket( &send );
++	}
++	#endif
++
+ 	// send the datagram
+ 	NET_SendPacket( chan->sock, send.cursize, send.data, chan->remoteAddress );
+ 
+@@ -277,6 +296,14 @@
+ 
+ 	MSG_WriteData( &send, data, length );
+ 
++	#ifdef ELITEFORCE
++	if(chan->compat)
++	{
++		// the original eliteforce uses the old scrambling routines only slightly modified.	
++		Netchan_ScramblePacket( &send );
++	}
++	#endif
++
+ 	// send the datagram
+ 	NET_SendPacket( chan->sock, send.cursize, send.data, chan->remoteAddress );
+ 
+@@ -308,7 +335,10 @@
+ 	qboolean	fragmented;
+ 
+ 	// XOR unscramble all data in the packet after the header
+-//	Netchan_UnScramblePacket( msg );
++#ifdef ELITEFORCE
++	if(chan->compat)
++		Netchan_UnScramblePacket( msg );
++#endif
+ 
+ 	// get sequence numbers		
+ 	MSG_BeginReadingOOB( msg );
+@@ -445,7 +475,10 @@
+ 
+ 		// TTimo
+ 		// clients were not acking fragmented messages
+-		chan->incomingSequence = sequence;
++		#ifdef ELITEFORCE
++		if(!chan->compat)
++		#endif
++			chan->incomingSequence = sequence;
+ 		
+ 		return qtrue;
+ 	}
+Index: code/qcommon/cm_patch.h
+===================================================================
+--- code/qcommon/cm_patch.h	(revision 787)
++++ code/qcommon/cm_patch.h	(working copy)
+@@ -60,8 +60,8 @@
+ */
+ 
+ 
+-#define	MAX_FACETS			1024
+-#define	MAX_PATCH_PLANES	2048
++#define	MAX_FACETS			4096
++#define	MAX_PATCH_PLANES	8192
+ 
+ typedef struct {
+ 	float	plane[4];
+Index: code/qcommon/q_shared.h
+===================================================================
+--- code/qcommon/q_shared.h	(revision 787)
++++ code/qcommon/q_shared.h	(working copy)
+@@ -26,14 +26,26 @@
+ // q_shared.h -- included first by ALL program modules.
+ // A user mod should never modify this file
+ 
++#ifdef ELITEFORCE
++#define Q3_VERSION            "ioST:V HM v1.34-rc1"
++#define CLIENT_WINDOW_TITLE   "icculus.org/stvoyhm"
++#define CONSOLE_WINDOW_TITLE  "icculus.org/stvoyhm console"
++#else
+ #define Q3_VERSION            "ioQ3 1.34-rc1"
+ #define CLIENT_WINDOW_TITLE   "icculus.org/quake3"
++#define CONSOLE_WINDOW_TITLE  "icculus.org/quake3 console"
++#endif
++
+ #define CLIENT_WINDOW_ICON    "ioq3"
+-#define CONSOLE_WINDOW_TITLE  "icculus.org/quake3 console"
+ #define CONSOLE_WINDOW_ICON   "ioq3 console"
++
+ // 1.32 released 7-10-2002
+ 
++#ifdef ELITEFORCE
++#define BASEGAME              "baseEF"
++#else
+ #define BASEGAME              "baseq3"
++#endif
+ 
+ #define MAX_TEAMNAME 32
+ 
+@@ -937,7 +949,11 @@
+ #define	MAX_POWERUPS			16
+ #define	MAX_WEAPONS				16		
+ 
++#ifdef ELITEFORCE
++#define MAX_PS_EVENTS			4
++#else
+ #define	MAX_PS_EVENTS			2
++#endif
+ 
+ #define PS_PMOVEFRAMECOUNTBITS	6
+ 
+@@ -961,6 +977,11 @@
+ 	vec3_t		origin;
+ 	vec3_t		velocity;
+ 	int			weaponTime;
++#ifdef ELITEFORCE
++        int                     rechargeTime;           // for the phaser
++        short           useTime;                        // use debounce
++        int                     introTime;                      // for the holodoor
++#endif
+ 	int			gravity;
+ 	int			speed;
+ 	int			delta_angles[3];	// add to command angles to get view direction
+@@ -979,7 +1000,9 @@
+ 								// when at rest, the value will remain unchanged
+ 								// used to twist the legs during strafing
+ 
++#ifndef ELITEFORCE
+ 	vec3_t		grapplePoint;	// location of grapple to pull towards if PMF_GRAPPLE_PULL
++#endif
+ 
+ 	int			eFlags;			// copied to entityState_t->eFlags
+ 
+@@ -1003,20 +1026,27 @@
+ 	int			damageYaw;
+ 	int			damagePitch;
+ 	int			damageCount;
++#ifdef ELITEFORCE
++	int			damageShieldCount;
++#endif
+ 
+ 	int			stats[MAX_STATS];
+ 	int			persistant[MAX_PERSISTANT];	// stats that aren't cleared on death
+ 	int			powerups[MAX_POWERUPS];	// level.time that the powerup runs out
+ 	int			ammo[MAX_WEAPONS];
+ 
++#ifndef ELITEFORCE
+ 	int			generic1;
+ 	int			loopSound;
+ 	int			jumppad_ent;	// jumppad entity hit this frame
++#endif
+ 
+ 	// not communicated over the net at all
+ 	int			ping;			// server to game info for scoreboard
++#ifndef ELITEFORCE
+ 	int			pmove_framecount;	// FIXME: don't transmit over the network
+ 	int			jumppad_frame;
++#endif
+ 	int			entityEventSequence;
+ } playerState_t;
+ 
+@@ -1051,14 +1081,23 @@
+ 										// then BUTTON_WALKING should be set
+ 
+ // usercmd_t is sent to the server each client frame
++#ifdef ELITEFORCE
+ typedef struct usercmd_s {
++        int             serverTime;
++        byte    buttons;
++        byte    weapon;
++        int             angles[3];
++        signed char     forwardmove, rightmove, upmove;
++} usercmd_t;
++#else
++typedef struct usercmd_s {
+ 	int				serverTime;
+ 	int				angles[3];
+ 	int 			buttons;
+ 	byte			weapon;           // weapon 
+ 	signed char	forwardmove, rightmove, upmove;
+ } usercmd_t;
+-
++#endif
+ //===================================================================
+ 
+ // if entityState->solid == SOLID_BMODEL, modelindex is an inline model number
+@@ -1129,7 +1168,9 @@
+ 	int		legsAnim;		// mask off ANIM_TOGGLEBIT
+ 	int		torsoAnim;		// mask off ANIM_TOGGLEBIT
+ 
++#ifndef ELITEFORCE
+ 	int		generic1;
++#endif
+ } entityState_t;
+ 
+ typedef enum {
+Index: code/qcommon/files.c
+===================================================================
+--- code/qcommon/files.c	(revision 787)
++++ code/qcommon/files.c	(working copy)
+@@ -200,8 +200,12 @@
+ 
+ // every time a new demo pk3 file is built, this checksum must be updated.
+ // the easiest way to get it is to just run the game and see what it spits out
++#ifdef ELITEFORCE
++#define PAK0_CHECKSUM				3376297517u
++#else
+ #define	DEMO_PAK0_CHECKSUM	2985612116u
+ #define	PAK0_CHECKSUM				1566731103u
++#endif
+ 
+ // if this is defined, the executable positively won't work with any paks other
+ // than the demo pak, even if productid is present.  This is only used for our
+@@ -2611,9 +2615,14 @@
+ 		havepak = qfalse;
+ 
+ 		// never autodownload any of the id paks
++#ifdef ELITEFORCE
++		if(FS_idPak(fs_serverReferencedPakNames[i], BASEGAME))
++			continue;
++#else
+ 		if ( FS_idPak(fs_serverReferencedPakNames[i], BASEGAME) || FS_idPak(fs_serverReferencedPakNames[i], "missionpack") ) {
+ 			continue;
+ 		}
++#endif
+ 
+ 		for ( sp = fs_searchpaths ; sp ; sp = sp->next ) {
+ 			if ( sp->pack && sp->pack->checksum == fs_serverReferencedPaks[i] ) {
+@@ -2823,6 +2832,7 @@
+ 	}
+ 
+ 	Com_ReadCDKey(BASEGAME);
++
+ 	fs = Cvar_Get ("fs_game", "", CVAR_INIT|CVAR_SYSTEMINFO );
+ 	if (fs && fs->string[0] != 0) {
+ 		Com_AppendCDKey( fs->string );
+@@ -2874,6 +2884,18 @@
+ 				!Q_stricmpn( path->pack->pakGamename, "demoq3", MAX_OSPATH ))) {
+ 			foundPak0 = qtrue;
+ 
++#ifdef ELITEFORCE
++			if(path->pack->checksum != PAK0_CHECKSUM)
++			{
++				Com_Printf("\n\n"
++						"**************************************************\n"
++						"WARNING: pak0.pk3 is present but its checksum (%u)\n"
++						"is not correct. Please re-copy pak0.pk3 from your\n"
++						"legitimate EF CDROM.\n"
++						"**************************************************\n\n\n",
++						path->pack->checksum);
++			}
++#else
+ 			if( path->pack->checksum == DEMO_PAK0_CHECKSUM ) {
+ 				Com_Printf( "\n\n"
+ 						"**************************************************\n"
+@@ -2890,6 +2912,7 @@
+ 						"**************************************************\n\n\n",
+ 						path->pack->checksum );
+ 			}
++#endif
+ 		}
+ 	}
+ 
+@@ -3329,7 +3352,11 @@
+ 	if ( Q_stricmp(fs_gamedirvar->string, lastValidGame) ) {
+ 		// skip the q3config.cfg if "safe" is on the command line
+ 		if ( !Com_SafeMode() ) {
++#ifdef ELITEFORCE
++			Cbuf_AddText("exec hmconfig.cfg\n");
++#else
+ 			Cbuf_AddText ("exec q3config.cfg\n");
++#endif
+ 		}
+ 	}
+ 
+Index: code/qcommon/cm_trace.c
+===================================================================
+--- code/qcommon/cm_trace.c	(revision 787)
++++ code/qcommon/cm_trace.c	(working copy)
+@@ -1164,6 +1164,12 @@
+ 	// fill in a default trace
+ 	Com_Memset( &tw, 0, sizeof(tw) );
+ 	tw.trace.fraction = 1;	// assume it goes the entire distance until shown otherwise
++#ifdef ELITEFORCE
++	// obviously Raven fucked this up. They seem to expect a SURF_NOIMPACT flag if the trace
++	// went through to the end, or the game will crash when firing the dreadnought weapon and
++	// it doesn't hit anything.
++	tw.trace.surfaceFlags = SURF_NOIMPACT;
++#endif
+ 	VectorCopy(origin, tw.modelOrigin);
+ 
+ 	if (!cm.numNodes) {
+Index: code/qcommon/qcommon.h
+===================================================================
+--- code/qcommon/qcommon.h	(revision 787)
++++ code/qcommon/qcommon.h	(working copy)
+@@ -23,6 +23,10 @@
+ #ifndef _QCOMMON_H_
+ #define _QCOMMON_H_
+ 
++#if defined(ELITEFORCE) && defined(MISSIONPACK)
++	#undef MISSIONPACK
++#endif
++
+ #include "../qcommon/cm_public.h"
+ 
+ //Ignore __attribute__ on non-gcc platforms
+@@ -43,6 +47,9 @@
+ 	qboolean	allowoverflow;	// if false, do a Com_Error
+ 	qboolean	overflowed;		// set to true if the buffer size failed (with allowoverflow set)
+ 	qboolean	oob;			// set to true if the buffer size failed (with allowoverflow set)
++#ifdef ELITEFORCE
++	qboolean	compat;		// Compatibility mode for old EliteForce servers.
++#endif
+ 	byte	*data;
+ 	int		maxsize;
+ 	int		cursize;
+@@ -207,6 +214,10 @@
+ 	int			unsentFragmentStart;
+ 	int			unsentLength;
+ 	byte		unsentBuffer[MAX_MSGLEN];
++
++#ifdef ELITEFORCE
++	qboolean	compat;
++#endif
+ } netchan_t;
+ 
+ void Netchan_Init( int qport );
+@@ -226,23 +237,45 @@
+ ==============================================================
+ */
+ 
++#ifdef ELITEFORCE
++#define EFPROTOCOL_VERSION	24
++#define PROTOCOL_VERSION	25
++#else
+ #define	PROTOCOL_VERSION	68
++#endif
+ // 1.31 - 67
+ 
+ // maintain a list of compatible protocols for demo playing
+ // NOTE: that stuff only works with two digits protocols
+ extern int demo_protocols[];
+ 
+-#define	UPDATE_SERVER_NAME	"update.quake3arena.com"
+ // override on command line, config files etc.
+-#ifndef MASTER_SERVER_NAME
+-#define MASTER_SERVER_NAME	"master.quake3arena.com"
++#ifdef ELITEFORCE
++  
++  #define	UPDATE_SERVER_NAME	"motd.stef1.ravensoft.com"
++  #ifndef MASTER_SERVER_NAME
++  #define MASTER_SERVER_NAME	"master.stef1.ravensoft.com"
++  #endif
++  #ifndef AUTHORIZE_SERVER_NAME
++  #define	AUTHORIZE_SERVER_NAME	"authenticate.stef1.ravensoft.com"
++  #endif
++
++  #define PORT_MASTER 27953
++
++#else
++
++  #define	UPDATE_SERVER_NAME	"update.quake3arena.com"
++  #ifndef MASTER_SERVER_NAME
++  #define MASTER_SERVER_NAME	"master.quake3arena.com"
++  #endif
++  #ifndef AUTHORIZE_SERVER_NAME
++  #define	AUTHORIZE_SERVER_NAME	"authorize.quake3arena.com"
++  #endif
++
++  #define PORT_MASTER 27950
++
+ #endif
+-#ifndef AUTHORIZE_SERVER_NAME
+-#define	AUTHORIZE_SERVER_NAME	"authorize.quake3arena.com"
+-#endif
+ 
+-#define	PORT_MASTER			27950
+ #define	PORT_UPDATE			27951
+ #ifndef PORT_AUTHORIZE
+ #define	PORT_AUTHORIZE		27952
+@@ -531,7 +564,11 @@
+ #define FS_CGAME_REF	0x04
+ #define FS_QAGAME_REF	0x08
+ // number of id paks that will never be autodownloaded from baseq3
++#ifdef ELITEFORCE
++#define NUM_ID_PAKS		4
++#else
+ #define NUM_ID_PAKS		9
++#endif
+ 
+ #define	MAX_FILE_HANDLES	64
+ 
+Index: code/qcommon/msg.c
+===================================================================
+--- code/qcommon/msg.c	(revision 787)
++++ code/qcommon/msg.c	(working copy)
+@@ -103,6 +103,15 @@
+ 
+ int	overflows;
+ 
++#ifdef ELITEFORCE
++// Apparently, eliteforce only sends stuff like strings on 1 byte boundaries.
++void MSG_RoundBits(msg_t *msg)
++{
++	if(msg->bit & 0x07)
++		msg->bit = ++msg->readcount << 3;
++}
++#endif
++
+ // negative bit values include signs
+ void MSG_WriteBits( msg_t *msg, int value, int bits ) {
+ 	int	i;
+@@ -140,23 +149,58 @@
+ 		bits = -bits;
+ 	}
+ 	if (msg->oob) {
+-		if (bits==8) {
+-			msg->data[msg->cursize] = value;
+-			msg->cursize += 1;
+-			msg->bit += 8;
+-		} else if (bits==16) {
+-			unsigned short *sp = (unsigned short *)&msg->data[msg->cursize];
+-			*sp = LittleShort(value);
+-			msg->cursize += 2;
+-			msg->bit += 16;
+-		} else if (bits==32) {
+-			unsigned int *ip = (unsigned int *)&msg->data[msg->cursize];
+-			*ip = LittleLong(value);
+-			msg->cursize += 4;
+-			msg->bit += 32;
+-		} else {
+-			Com_Error(ERR_DROP, "can't read %d bits\n", bits);
++		#ifdef ELITEFORCE
++		if(msg->compat)
++		{
++			int write, leftover, nbits = bits, location;
++			
++			// make sure to set all non-used space in value to zero.
++			if(bits < 32)
++				value &= ((1 << bits) - 1);
++			
++			while(nbits)
++			{
++				leftover = msg->bit & 0x07;
++				write = 8 - leftover;
++				location = msg->bit >> 3;
++				
++				if(write > nbits)
++					write = nbits;
++			
++				msg->data[location] &= (1 << leftover) - 1;
++				msg->data[location] |= (value & ((1 << write) - 1)) << (leftover);
++				nbits -= write;
++				value >>= write;
++				msg->bit += write;
++			}
++
++			msg->cursize = (msg->bit >> 3) + ((msg->bit & 0x07) ? 1 : 0);
+ 		}
++		else
++		{
++		#endif		
++			if (bits==8) {
++				msg->data[msg->cursize] = value;
++				msg->cursize += 1;
++				msg->bit += 8;
++			} else if (bits==16) {
++				unsigned short *sp = (unsigned short *)&msg->data[msg->cursize];
++				*sp = LittleShort(value);
++				msg->cursize += 2;
++				msg->bit += 16;
++			} else if (bits==32) {
++				unsigned int *ip = (unsigned int *)&msg->data[msg->cursize];
++				*ip = LittleLong(value);
++				msg->cursize += 4;
++				msg->bit += 32;
++			}
++			else
++			{
++				Com_Error(ERR_DROP, "can't write %d bits\n", bits);
++			}
++		#ifdef ELITEFORCE
++		}
++		#endif
+ 	} else {
+ //		fp = fopen("c:\\netchan.bin", "a");
+ 		value &= (0xffffffff>>(32-bits));
+@@ -198,23 +242,51 @@
+ 	}
+ 
+ 	if (msg->oob) {
+-		if (bits==8) {
+-			value = msg->data[msg->readcount];
+-			msg->readcount += 1;
+-			msg->bit += 8;
+-		} else if (bits==16) {
+-			unsigned short *sp = (unsigned short *)&msg->data[msg->readcount];
+-			value = LittleShort(*sp);
+-			msg->readcount += 2;
+-			msg->bit += 16;
+-		} else if (bits==32) {
+-			unsigned int *ip = (unsigned int *)&msg->data[msg->readcount];
+-			value = LittleLong(*ip);
+-			msg->readcount += 4;
+-			msg->bit += 32;
+-		} else {
+-			Com_Error(ERR_DROP, "can't read %d bits\n", bits);
++		#ifdef ELITEFORCE
++		if(msg->compat)
++		{
++			nbits = 0;
++			
++			while(nbits < bits)
++			{
++				i = msg->bit & 0x07;
++				get = 8 - i;
++				
++				if(get > bits - nbits)
++					get = bits - nbits;
++					
++				value |= ((msg->data[msg->bit >> 3] >> i) & ((1 << get) - 1)) << nbits;
++				msg->bit += get;
++				nbits += get;
++			}
++
++			msg->readcount = (msg->bit >> 3) + ((msg->bit & 0x07) ? 1 : 0);
+ 		}
++		else
++		{
++		#endif
++			if (bits==8) {
++				value = msg->data[msg->readcount];
++				msg->readcount += 1;
++				msg->bit += 8;
++			} else if (bits==16) {
++				unsigned short *sp = (unsigned short *)&msg->data[msg->readcount];
++				value = LittleShort(*sp);
++				msg->readcount += 2;
++				msg->bit += 16;
++			} else if (bits==32) {
++				unsigned int *ip = (unsigned int *)&msg->data[msg->readcount];
++				value = LittleLong(*ip);
++				msg->readcount += 4;
++				msg->bit += 32;
++			}
++			else
++			{
++				Com_Error(ERR_DROP, "can't read %d bits\n", bits);
++			}
++		#ifdef ELITEFORCE
++		}
++		#endif
+ 	} else {
+ 		nbits = 0;
+ 		if (bits&7) {
+@@ -245,7 +317,6 @@
+ }
+ 
+ 
+-
+ //================================================================================
+ 
+ //
+@@ -272,6 +343,16 @@
+ 
+ void MSG_WriteData( msg_t *buf, const void *data, int length ) {
+ 	int i;
++
++#ifdef ELITEFORCE
++	if(buf->compat)
++	{
++		// Start writing on a whole-byte boundary
++		if(buf->bit & 0x07)
++			buf->bit = ++buf->cursize << 3;
++	}
++#endif
++
+ 	for(i=0;i<length;i++) {
+ 		MSG_WriteByte(buf, ((byte *)data)[i]);
+ 	}
+@@ -430,6 +511,11 @@
+ 	static char	string[MAX_STRING_CHARS];
+ 	int		l,c;
+ 	
++#ifdef ELITEFORCE
++	if(msg->compat)
++		MSG_RoundBits(msg);
++#endif
++
+ 	l = 0;
+ 	do {
+ 		c = MSG_ReadByte(msg);		// use ReadByte so -1 is out of bounds
+@@ -458,6 +544,12 @@
+ 	static char	string[BIG_INFO_STRING];
+ 	int		l,c;
+ 	
++#ifdef ELITEFORCE
++	if(msg->compat)
++		MSG_RoundBits(msg);
++#endif
++
++
+ 	l = 0;
+ 	do {
+ 		c = MSG_ReadByte(msg);		// use ReadByte so -1 is out of bounds
+@@ -482,6 +574,11 @@
+ 	static char	string[MAX_STRING_CHARS];
+ 	int		l,c;
+ 
++#ifdef ELITEFORCE
++	if(msg->compat)
++		MSG_RoundBits(msg);
++#endif
++
+ 	l = 0;
+ 	do {
+ 		c = MSG_ReadByte(msg);		// use ReadByte so -1 is out of bounds
+@@ -508,6 +605,11 @@
+ void MSG_ReadData( msg_t *msg, void *data, int len ) {
+ 	int		i;
+ 
++#ifdef ELITEFORCE
++	if(msg->compat)
++		MSG_RoundBits(msg);
++#endif
++
+ 	for (i=0 ; i<len ; i++) {
+ 		((byte *)data)[i] = MSG_ReadByte (msg);
+ 	}
+@@ -653,7 +755,11 @@
+ 	MSG_WriteDelta( msg, from->forwardmove, to->forwardmove, 8 );
+ 	MSG_WriteDelta( msg, from->rightmove, to->rightmove, 8 );
+ 	MSG_WriteDelta( msg, from->upmove, to->upmove, 8 );
++#ifdef ELITEFORCE
++	MSG_WriteDelta( msg, from->buttons, to->buttons, 8 );
++#else
+ 	MSG_WriteDelta( msg, from->buttons, to->buttons, 16 );
++#endif
+ 	MSG_WriteDelta( msg, from->weapon, to->weapon, 8 );
+ }
+ 
+@@ -675,7 +781,11 @@
+ 	to->forwardmove = MSG_ReadDelta( msg, from->forwardmove, 8);
+ 	to->rightmove = MSG_ReadDelta( msg, from->rightmove, 8);
+ 	to->upmove = MSG_ReadDelta( msg, from->upmove, 8);
++#ifdef ELITEFORCE
++	to->buttons = MSG_ReadDelta( msg, from->buttons, 8);
++#else
+ 	to->buttons = MSG_ReadDelta( msg, from->buttons, 16);
++#endif
+ 	to->weapon = MSG_ReadDelta( msg, from->weapon, 8);
+ }
+ 
+@@ -712,7 +822,11 @@
+ 	MSG_WriteDeltaKey( msg, key, from->forwardmove, to->forwardmove, 8 );
+ 	MSG_WriteDeltaKey( msg, key, from->rightmove, to->rightmove, 8 );
+ 	MSG_WriteDeltaKey( msg, key, from->upmove, to->upmove, 8 );
++#ifdef ELITEFORCE
++	MSG_WriteDeltaKey( msg, key, from->buttons, to->buttons, 8 );
++#else
+ 	MSG_WriteDeltaKey( msg, key, from->buttons, to->buttons, 16 );
++#endif
+ 	MSG_WriteDeltaKey( msg, key, from->weapon, to->weapon, 8 );
+ }
+ 
+@@ -736,7 +850,11 @@
+ 		to->forwardmove = MSG_ReadDeltaKey( msg, key, from->forwardmove, 8);
+ 		to->rightmove = MSG_ReadDeltaKey( msg, key, from->rightmove, 8);
+ 		to->upmove = MSG_ReadDeltaKey( msg, key, from->upmove, 8);
++#ifdef ELITEFORCE
++		to->buttons = MSG_ReadDeltaKey( msg, key, from->buttons, 8);
++#else
+ 		to->buttons = MSG_ReadDeltaKey( msg, key, from->buttons, 16);
++#endif
+ 		to->weapon = MSG_ReadDeltaKey( msg, key, from->weapon, 8);
+ 	} else {
+ 		to->angles[0] = from->angles[0];
+@@ -758,6 +876,48 @@
+ =============================================================================
+ */
+ 
++#ifdef ELITEFORCE
++#define PVECTOR_BITS 5	// amount of bits we need to reference all predefined vectors.
++#define PVECTOR_BYTES 8	// length of predefined vector.
++#define PVECTOR_NUM (1 << PVECTOR_BITS) - 1 // number of existing predefined vectors.
++
++byte pVectors[PVECTOR_NUM][PVECTOR_BYTES] =
++{
++	{0x60, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0x60, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0x40, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0x20, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0x20, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0x40, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0x60, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0x60, 0x80, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00},
++	{0x60, 0x80, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00},
++	{0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00},
++	{0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0xe0, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0x60, 0xc0, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00},
++	{0x60, 0xc0, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00},
++	{0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0x60, 0xc0, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00},
++	{0x60, 0xc0, 0x00, 0x00, 0x00, 0x10, 0x02, 0x00},
++	{0x60, 0x80, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00},
++	{0x60, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00},
++	{0xe1, 0x00, 0xc0, 0x01, 0x90, 0x00, 0x00, 0x00},
++	{0xed, 0x07, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00},
++	{0x60, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00},
++	{0x62, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00},
++	{0x02, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00},
++	{0xe0, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
++	{0x60, 0x80, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00},
++};
++
++#endif
++
+ /*
+ =================
+ MSG_ReportChangeVectors_f
+@@ -783,6 +943,61 @@
+ // using the stringizing operator to save typing...
+ #define	NETF(x) #x,(int)&((entityState_t*)0)->x
+ 
++#ifdef ELITEFORCE
++netField_t      entityStateFields[] =
++{
++{ NETF(eType), 8 },
++{ NETF(eFlags), 24 },
++{ NETF(pos.trType), 8 },
++{ NETF(pos.trTime), 32 },
++{ NETF(pos.trDuration), 32 },
++{ NETF(pos.trBase[0]), 0 },
++{ NETF(pos.trBase[1]), 0 },
++{ NETF(pos.trBase[2]), 0 },
++{ NETF(pos.trDelta[0]), 0 },
++{ NETF(pos.trDelta[1]), 0 },
++{ NETF(pos.trDelta[2]), 0 },
++{ NETF(apos.trType), 8 },
++{ NETF(apos.trTime), 32 },
++{ NETF(apos.trDuration), 32 },
++{ NETF(apos.trBase[0]), 0 },
++{ NETF(apos.trBase[1]), 0 },
++{ NETF(apos.trBase[2]), 0 },
++{ NETF(apos.trDelta[0]), 0 },
++{ NETF(apos.trDelta[1]), 0 },
++{ NETF(apos.trDelta[2]), 0 },
++{ NETF(time), 32 },
++{ NETF(time2), 32 },
++{ NETF(origin[0]), 0 },
++{ NETF(origin[1]), 0 },
++{ NETF(origin[2]), 0 },
++{ NETF(origin2[0]), 0 },
++{ NETF(origin2[1]), 0 },
++{ NETF(origin2[2]), 0 },
++{ NETF(angles[0]), 0 },
++{ NETF(angles[1]), 0 },
++{ NETF(angles[2]), 0 },
++{ NETF(angles2[0]), 0 },
++{ NETF(angles2[1]), 0 },
++{ NETF(angles2[2]), 0 },
++{ NETF(otherEntityNum), GENTITYNUM_BITS },
++{ NETF(otherEntityNum2), GENTITYNUM_BITS },
++{ NETF(groundEntityNum), GENTITYNUM_BITS },
++{ NETF(loopSound), 16 },
++{ NETF(constantLight), 32 },
++{ NETF(modelindex), 8 },
++{ NETF(modelindex2), 8 },
++{ NETF(frame), 16 },
++{ NETF(clientNum), 8 },
++{ NETF(solid), 24 },
++{ NETF(event), 10 },
++{ NETF(eventParm), 8 },
++{ NETF(powerups), 16 },
++{ NETF(weapon), 8 },
++{ NETF(legsAnim), 8 },
++{ NETF(torsoAnim), 8 },
++};
++#else
+ netField_t	entityStateFields[] = 
+ {
+ { NETF(pos.trTime), 32 },
+@@ -802,7 +1017,7 @@
+ { NETF(legsAnim), 8 },
+ { NETF(groundEntityNum), GENTITYNUM_BITS },
+ { NETF(pos.trType), 8 },
+-{ NETF(eFlags), 19 },
++{ NETF(eFlags), 27 },
+ { NETF(otherEntityNum), GENTITYNUM_BITS },
+ { NETF(weapon), 8 },
+ { NETF(clientNum), 8 },
+@@ -837,8 +1052,8 @@
+ { NETF(constantLight), 32 },
+ { NETF(frame), 16 }
+ };
++#endif
+ 
+-
+ // if (int)f == f and (int)f + ( 1<<(FLOAT_INT_BITS-1) ) < ( 1 << FLOAT_INT_BITS )
+ // the float will be sent with FLOAT_INT_BITS, otherwise all 32 bits will be sent
+ #define	FLOAT_INT_BITS	13
+@@ -863,6 +1078,10 @@
+ 	int			trunc;
+ 	float		fullFloat;
+ 	int			*fromF, *toF;
++#ifdef ELITEFORCE
++        byte            vector[PVECTOR_BYTES];
++	int                     vectorIndex = -1;
++#endif
+ 
+ 	numFields = sizeof(entityStateFields)/sizeof(entityStateFields[0]);
+ 
+@@ -886,17 +1105,33 @@
+ 		Com_Error (ERR_FATAL, "MSG_WriteDeltaEntity: Bad entity number: %i", to->number );
+ 	}
+ 
++        #ifdef ELITEFORCE
++	if(msg->compat)
++		Com_Memset(vector, 0, sizeof(vector));
++	#endif
++
+ 	lc = 0;
+ 	// build the change vector as bytes so it is endien independent
+ 	for ( i = 0, field = entityStateFields ; i < numFields ; i++, field++ ) {
+ 		fromF = (int *)( (byte *)from + field->offset );
+ 		toF = (int *)( (byte *)to + field->offset );
+ 		if ( *fromF != *toF ) {
+-			lc = i+1;
++			#ifdef ELITEFORCE
++			if(msg->compat)
++				 vector[i >> 3] |= 1 << (i & 0x07);
++			else
++			#endif
++				lc = i+1;
+ 		}
+ 	}
+ 
+-	if ( lc == 0 ) {
++	#ifdef ELITEFORCE
++	if((msg->compat && !((int *) vector)[0] && !((int *) vector)[1]) || (!msg->compat && !lc))
++	{
++	#else
++	if ( lc == 0 )
++	{
++	#endif
+ 		// nothing at all changed
+ 		if ( !force ) {
+ 			return;		// nothing at all
+@@ -908,35 +1143,87 @@
+ 		return;
+ 	}
+ 
++	#ifdef ELITEFORCE
++	if(msg->compat)
++	{
++		for (i = 0; i < PVECTOR_NUM; i++)
++		{
++			if( ((int *) vector)[0] == ((int *)pVectors[i])[0] &&
++			    ((int *) vector)[1] == ((int *)pVectors[i])[1]
++			  )
++			{
++				vectorIndex = i;
++				break;
++			}
++		}
++	}
++	#endif
++
+ 	MSG_WriteBits( msg, to->number, GENTITYNUM_BITS );
+ 	MSG_WriteBits( msg, 0, 1 );			// not removed
+ 	MSG_WriteBits( msg, 1, 1 );			// we have a delta
+ 
+-	MSG_WriteByte( msg, lc );	// # of changes
++#ifdef ELITEFORCE
++	if(msg->compat)
++	{
++		MSG_WriteBits(msg, vectorIndex, PVECTOR_BITS);
+ 
++		if (vectorIndex < 0)
++		{
++			for ( i = 0 ; i + 8 <= numFields ; i += 8 )
++				MSG_WriteByte( msg, vector[i >> 3] );
++			if ( numFields & 7 )
++				MSG_WriteBits( msg, vector[i >> 3], numFields & 7 );
++	        }
++
++	}
++	else
++#endif
++		MSG_WriteByte( msg, lc );	// # of changes
++
+ 	oldsize += numFields;
+ 
++#ifdef ELITEFORCE
++	for ( i = 0, field = entityStateFields ; msg->compat ? (i < numFields) : (i < lc) ; i++, field++ ) {
++#else
+ 	for ( i = 0, field = entityStateFields ; i < lc ; i++, field++ ) {
++#endif
+ 		fromF = (int *)( (byte *)from + field->offset );
+ 		toF = (int *)( (byte *)to + field->offset );
+ 
+ 		if ( *fromF == *toF ) {
+-			MSG_WriteBits( msg, 0, 1 );	// no change
++
++			#ifdef ELITEFORCE
++			if(!msg->compat)
++			#endif
++				MSG_WriteBits( msg, 0, 1 );	// no change
+ 			continue;
+ 		}
+ 
+-		MSG_WriteBits( msg, 1, 1 );	// changed
++		#ifdef ELITEFORCE
++		if(!msg->compat)
++		#endif
++			MSG_WriteBits( msg, 1, 1 );	// changed
+ 
+ 		if ( field->bits == 0 ) {
+ 			// float
+ 			fullFloat = *(float *)toF;
+ 			trunc = (int)fullFloat;
+ 
+-			if (fullFloat == 0.0f) {
+-					MSG_WriteBits( msg, 0, 1 );
+-					oldsize += FLOAT_INT_BITS;
++#ifdef ELITEFORCE
++			if(!msg->compat && fullFloat == 0.0f)
++#else
++			if (fullFloat == 0.0f)
++#endif
++			{
++				MSG_WriteBits( msg, 0, 1 );
++				oldsize += FLOAT_INT_BITS;
+ 			} else {
+-				MSG_WriteBits( msg, 1, 1 );
++				#ifdef ELITEFORCE
++				if(!msg->compat)
++				#endif
++					MSG_WriteBits( msg, 1, 1 );
++	
+ 				if ( trunc == fullFloat && trunc + FLOAT_INT_BIAS >= 0 && 
+ 					trunc + FLOAT_INT_BIAS < ( 1 << FLOAT_INT_BITS ) ) {
+ 					// send as small integer
+@@ -949,13 +1236,23 @@
+ 				}
+ 			}
+ 		} else {
+-			if (*toF == 0) {
+-				MSG_WriteBits( msg, 0, 1 );
+-			} else {
+-				MSG_WriteBits( msg, 1, 1 );
+-				// integer
+-				MSG_WriteBits( msg, *toF, field->bits );
++			#ifdef ELITEFORCE
++			if(msg->compat)
++				MSG_WriteBits(msg, *toF, field->bits);
++			else
++			{
++			#endif
++				if (*toF == 0)
++					MSG_WriteBits( msg, 0, 1 );
++				else
++				{
++					MSG_WriteBits( msg, 1, 1 );
++					// integer
++					MSG_WriteBits( msg, *toF, field->bits );
++				}
++			#ifdef ELITEFORCE
+ 			}
++			#endif
+ 		}
+ 	}
+ }
+@@ -976,13 +1273,18 @@
+ 
+ void MSG_ReadDeltaEntity( msg_t *msg, entityState_t *from, entityState_t *to, 
+ 						 int number) {
+-	int			i, lc;
++	int			i, lc = 0;
+ 	int			numFields;
+ 	netField_t	*field;
+ 	int			*fromF, *toF;
+ 	int			print;
+ 	int			trunc;
+ 	int			startBit, endBit;
++#ifdef ELITEFORCE
++        int                     vectorIndex;
++        byte            vector_space[PVECTOR_BYTES];
++	byte            *vector = vector_space;
++#endif
+ 
+ 	if ( number < 0 || number >= MAX_GENTITIES) {
+ 		Com_Error( ERR_DROP, "Bad delta entity number: %i", number );
+@@ -1012,7 +1314,10 @@
+ 	}
+ 
+ 	numFields = sizeof(entityStateFields)/sizeof(entityStateFields[0]);
+-	lc = MSG_ReadByte(msg);
++	#ifdef ELITEFORCE
++	if(!msg->compat)
++	#endif
++		lc = MSG_ReadByte(msg);
+ 
+ 	// shownet 2/3 will interleave with other printed info, -1 will
+ 	// just print the delta records`
+@@ -1025,19 +1330,48 @@
+ 
+ 	to->number = number;
+ 
++#ifdef ELITEFORCE
++	if(msg->compat)
++	{
++		// Read in the vector index and check whether there is a predefined one or not.
++		vectorIndex = MSG_ReadBits( msg, PVECTOR_BITS );
++
++		if (vectorIndex == PVECTOR_NUM)
++		{
++			for (i = 0; i + 8 < numFields; i += 8)
++				vector[i >> 3] = MSG_ReadByte(msg);
++			if (numFields & 7)
++				vector[i>>3] = MSG_ReadBits( msg, numFields & 7 );
++		}
++		else
++			vector = pVectors[vectorIndex];
++	}
++
++	for ( i = 0, field = entityStateFields ; msg->compat ? (i < numFields) : (i < lc) ; i++, field++ ) {
++#else
+ 	for ( i = 0, field = entityStateFields ; i < lc ; i++, field++ ) {
++#endif
+ 		fromF = (int *)( (byte *)from + field->offset );
+ 		toF = (int *)( (byte *)to + field->offset );
+ 
+-		if ( ! MSG_ReadBits( msg, 1 ) ) {
++		#ifdef ELITEFORCE
++		if((msg->compat && ! (vector[i >> 3] & (1 << (i & 7)) )) || (!msg->compat && !MSG_ReadBits(msg, 1)))
++		#else
++		if ( ! MSG_ReadBits( msg, 1 ) )
++		#endif
++		{
+ 			// no change
+ 			*toF = *fromF;
+ 		} else {
+ 			if ( field->bits == 0 ) {
+ 				// float
+-				if ( MSG_ReadBits( msg, 1 ) == 0 ) {
++#ifdef ELITEFORCE
++				if(!msg->compat && !MSG_ReadBits( msg, 1 ))
++#else
++				if ( MSG_ReadBits( msg, 1 ) == 0 )
++#endif
+ 						*(float *)toF = 0.0f; 
+-				} else {
++				else {
+ 					if ( MSG_ReadBits( msg, 1 ) == 0 ) {
+ 						// integral float
+ 						trunc = MSG_ReadBits( msg, FLOAT_INT_BITS );
+@@ -1056,9 +1390,13 @@
+ 					}
+ 				}
+ 			} else {
+-				if ( MSG_ReadBits( msg, 1 ) == 0 ) {
++				#ifdef ELITEFORCE
++				if(!msg->compat && !MSG_ReadBits(msg, 1))
++				#else
++				if ( MSG_ReadBits( msg, 1 ) == 0 )
++				#endif
+ 					*toF = 0;
+-				} else {
++				else {
+ 					// integer
+ 					*toF = MSG_ReadBits( msg, field->bits );
+ 					if ( print ) {
+@@ -1069,12 +1407,19 @@
+ //			pcount[i]++;
+ 		}
+ 	}
+-	for ( i = lc, field = &entityStateFields[lc] ; i < numFields ; i++, field++ ) {
+-		fromF = (int *)( (byte *)from + field->offset );
+-		toF = (int *)( (byte *)to + field->offset );
+-		// no change
+-		*toF = *fromF;
++	#ifdef ELITEFORCE
++	if(!msg->compat)
++	{
++	#endif
++		for ( i = lc, field = &entityStateFields[lc] ; i < numFields ; i++, field++ ) {
++			fromF = (int *)( (byte *)from + field->offset );
++			toF = (int *)( (byte *)to + field->offset );
++			// no change
++			*toF = *fromF;
++		}
++	#ifdef ELITEFORCE
+ 	}
++	#endif
+ 
+ 	if ( print ) {
+ 		if ( msg->bit == 0 ) {
+@@ -1098,6 +1443,59 @@
+ // using the stringizing operator to save typing...
+ #define	PSF(x) #x,(int)&((playerState_t*)0)->x
+ 
++#ifdef ELITEFORCE
++netField_t      playerStateFields[] =
++{
++{ PSF(commandTime), 32 },
++{ PSF(pm_type), 8 },
++{ PSF(bobCycle), 8 },
++{ PSF(pm_flags), 16 },
++{ PSF(pm_time), -16 },
++{ PSF(origin[0]), 0 },
++{ PSF(origin[1]), 0 },
++{ PSF(origin[2]), 0 },
++{ PSF(velocity[0]), 0 },
++{ PSF(velocity[1]), 0 },
++{ PSF(velocity[2]), 0 },
++{ PSF(weaponTime), -16 },
++{ PSF(gravity), 16 },
++{ PSF(speed), 16 },
++{ PSF(delta_angles[0]), 16 },
++{ PSF(delta_angles[1]), 16 },
++{ PSF(delta_angles[2]), 16 },
++{ PSF(groundEntityNum), GENTITYNUM_BITS },
++{ PSF(legsTimer), 8 },
++{ PSF(torsoTimer), 12 },
++{ PSF(legsAnim), 8 },
++{ PSF(torsoAnim), 8 },
++{ PSF(movementDir), 4 },
++{ PSF(eFlags), 16 },
++{ PSF(eventSequence), 16 },
++{ PSF(events[0]), 8 },
++{ PSF(events[1]), 8 },
++{ PSF(events[2]), 8 },
++{ PSF(events[3]), 8 },
++{ PSF(eventParms[0]), 8 },
++{ PSF(eventParms[1]), 8 },
++{ PSF(eventParms[2]), 8 },
++{ PSF(eventParms[3]), 8 },
++{ PSF(externalEvent), 10 },
++{ PSF(externalEventParm), 8 },
++{ PSF(clientNum), 8 },
++{ PSF(weapon), 5 },
++{ PSF(weaponstate), 4 },
++{ PSF(viewangles[0]), 0 },
++{ PSF(viewangles[1]), 0 },
++{ PSF(viewangles[2]), 0 },
++{ PSF(viewheight), -8 },
++{ PSF(damageEvent), 8 },
++{ PSF(damageYaw), 8 },
++{ PSF(damagePitch), 8 },
++{ PSF(damageCount), 8 },
++{ PSF(damageShieldCount), 8 },
++{ PSF(introTime), 32},
++};
++#else
+ netField_t	playerStateFields[] = 
+ {
+ { PSF(commandTime), 32 },				
+@@ -1149,7 +1547,7 @@
+ { PSF(jumppad_ent), 10 },
+ { PSF(loopSound), 16 }
+ };
+-
++#endif
+ /*
+ =============
+ MSG_WriteDeltaPlayerstate
+@@ -1168,7 +1566,7 @@
+ 	netField_t		*field;
+ 	int				*fromF, *toF;
+ 	float			fullFloat;
+-	int				trunc, lc;
++	int				trunc, lc = 0;
+ 
+ 	if (!from) {
+ 		from = &dummy;
+@@ -1179,20 +1577,33 @@
+ 
+ 	numFields = sizeof( playerStateFields ) / sizeof( playerStateFields[0] );
+ 
+-	lc = 0;
+-	for ( i = 0, field = playerStateFields ; i < numFields ; i++, field++ ) {
+-		fromF = (int *)( (byte *)from + field->offset );
+-		toF = (int *)( (byte *)to + field->offset );
+-		if ( *fromF != *toF ) {
+-			lc = i+1;
++	#ifdef ELITEFORCE
++	if(!msg->compat)
++	{
++	#endif
++		lc = 0;
++		for ( i = 0, field = playerStateFields ; i < numFields ; i++, field++ ) {
++			fromF = (int *)( (byte *)from + field->offset );
++			toF = (int *)( (byte *)to + field->offset );
++			if ( *fromF != *toF ) {
++				lc = i+1;
++			}
+ 		}
++
++		MSG_WriteByte( msg, lc );	// # of changes
++	
++	#ifdef ELITEFORCE
+ 	}
+-
+-	MSG_WriteByte( msg, lc );	// # of changes
+-
++	#endif
++	
+ 	oldsize += numFields - lc;
+ 
+-	for ( i = 0, field = playerStateFields ; i < lc ; i++, field++ ) {
++	#ifdef ELITEFORCE
++	for ( i = 0, field = playerStateFields ; msg->compat ? (i < numFields) : (i < lc) ; i++, field++ )
++	#else
++	for ( i = 0, field = playerStateFields ; i < lc ; i++, field++ )
++	#endif
++	{
+ 		fromF = (int *)( (byte *)from + field->offset );
+ 		toF = (int *)( (byte *)to + field->offset );
+ 
+@@ -1255,13 +1666,22 @@
+ 		}
+ 	}
+ 
+-	if (!statsbits && !persistantbits && !ammobits && !powerupbits) {
++	#ifdef ELITEFORCE
++	if (!msg->compat && !statsbits && !persistantbits && !ammobits && !powerupbits)
++	#else
++	if (!statsbits && !persistantbits && !ammobits && !powerupbits)
++	#endif
++	{
+ 		MSG_WriteBits( msg, 0, 1 );	// no change
+ 		oldsize += 4;
+ 		return;
+ 	}
+-	MSG_WriteBits( msg, 1, 1 );	// changed
+ 
++	#ifdef ELITEFORCE
++	if(!msg->compat)
++	#endif
++		MSG_WriteBits( msg, 1, 1 );	// changed
++
+ 	if ( statsbits ) {
+ 		MSG_WriteBits( msg, 1, 1 );	// changed
+ 		MSG_WriteBits( msg, statsbits, MAX_STATS );
+@@ -1313,7 +1733,7 @@
+ ===================
+ */
+ void MSG_ReadDeltaPlayerstate (msg_t *msg, playerState_t *from, playerState_t *to ) {
+-	int			i, lc;
++	int			i, lc = 0;
+ 	int			bits;
+ 	netField_t	*field;
+ 	int			numFields;
+@@ -1345,9 +1765,18 @@
+ 	}
+ 
+ 	numFields = sizeof( playerStateFields ) / sizeof( playerStateFields[0] );
+-	lc = MSG_ReadByte(msg);
+ 
+-	for ( i = 0, field = playerStateFields ; i < lc ; i++, field++ ) {
++	#ifdef ELITEFORCE
++	if(!msg->compat)
++	#endif	
++		lc = MSG_ReadByte(msg);
++
++#ifdef ELITEFORCE
++	for ( i = 0, field = playerStateFields ; msg->compat ? (i < numFields) : (i < lc) ; i++, field++ )
++#else
++	for ( i = 0, field = playerStateFields ; i < lc ; i++, field++ )
++#endif
++	{
+ 		fromF = (int *)( (byte *)from + field->offset );
+ 		toF = (int *)( (byte *)to + field->offset );
+ 
+@@ -1382,16 +1811,27 @@
+ 			}
+ 		}
+ 	}
+-	for ( i=lc,field = &playerStateFields[lc];i<numFields; i++, field++) {
+-		fromF = (int *)( (byte *)from + field->offset );
+-		toF = (int *)( (byte *)to + field->offset );
+-		// no change
+-		*toF = *fromF;
++	#ifdef ELITEFORCE
++	if(!msg->compat)
++	{
++	#endif
++		for ( i=lc,field = &playerStateFields[lc];i<numFields; i++, field++) {
++			fromF = (int *)( (byte *)from + field->offset );
++			toF = (int *)( (byte *)to + field->offset );
++			// no change
++			*toF = *fromF;
++		}
++	#ifdef ELITEFORCE
+ 	}
+-
+-
++	#endif
++	
+ 	// read the arrays
+-	if (MSG_ReadBits( msg, 1 ) ) {
++#ifdef ELITEFORCE
++	if(msg->compat || MSG_ReadBits( msg, 1 ))
++#else
++	if (MSG_ReadBits( msg, 1 ) )
++#endif
++	{
+ 		// parse stats
+ 		if ( MSG_ReadBits( msg, 1 ) ) {
+ 			LOG("PS_STATS");
+Index: code/qcommon/qfiles.h
+===================================================================
+--- code/qcommon/qfiles.h	(revision 787)
++++ code/qcommon/qfiles.h	(working copy)
+@@ -327,7 +327,7 @@
+ 
+ // If you want to enable support for Raven's .mdr / md4 format, uncomment the next
+ // line.
+-//#define RAVENMD4
++#define RAVENMD4
+ 
+ #ifdef RAVENMD4
+ 
+Index: code/qcommon/common.c
+===================================================================
+--- code/qcommon/common.c	(revision 787)
++++ code/qcommon/common.c	(working copy)
+@@ -31,8 +31,13 @@
+ #include <winsock.h>
+ #endif
+ 
++#ifdef ELITEFORCE
+ int demo_protocols[] =
++{ 25, 0 };
++#else
++int demo_protocols[] =
+ { 66, 67, 68, 0 };
++#endif
+ 
+ #define MAX_NUM_ARGVS	50
+ 
+@@ -2268,8 +2273,14 @@
+ 	fileHandle_t	f;
+ 	char			buffer[33];
+ 	char			fbuffer[MAX_OSPATH];
+-
++#ifdef ELITEFORCE
++	int index = 0;
++	char curchar;
++	
++	sprintf(fbuffer, "%s/efq3.key", filename);
++#else
+ 	sprintf(fbuffer, "%s/q3key", filename);
++#endif
+ 
+ 	FS_SV_FOpenFileRead( fbuffer, &f );
+ 	if ( !f ) {
+@@ -2279,14 +2290,68 @@
+ 
+ 	Com_Memset( buffer, 0, sizeof(buffer) );
+ 
++#ifdef ELITEFORCE
++	// check for the normal CD key
++	while(index < 16)
++	{
++		if(FS_Read(&curchar, 1, f) != 1)
++		{
++			Q_strncpyz( cl_cdkey, "                ", 17 );
++			FS_FCloseFile(f);
++			return;
++		}
++		
++		curchar = toupper(curchar);
++
++		if(curchar < '0' || (curchar > '9' && curchar < 'A') || curchar > 'Z')
++			continue;
++		
++		buffer[index] = toupper(curchar);
++		
++		index++;
++	}
++	FS_FCloseFile(f);
++	
++	// check for the expansion pack cd key
++	sprintf(fbuffer, "%s/expefq3.key", filename);
++	FS_SV_FOpenFileRead(fbuffer, &f);
++	
++	if(f)
++	{
++		while(index < 32)
++		{
++			// same game
++
++			if(FS_Read(&curchar, 1, f) != 1)
++			{
++				Q_strncpyz( cl_cdkey, "                ", 17 );
++				FS_FCloseFile(f);
++				return;
++			}
++		
++			curchar = toupper(curchar);
++
++			if(curchar < '0' || (curchar > '9' && curchar < 'A') || curchar > 'Z')
++				continue;
++		
++			buffer[index] = toupper(curchar);
++		
++			index++;
++		}
++		FS_FCloseFile(f);
++	}
++	
++	Q_strncpyz(cl_cdkey, buffer, index+1);
++#else
+ 	FS_Read( buffer, 16, f );
+ 	FS_FCloseFile( f );
+-
++	
+ 	if (CL_CDKeyValidate(buffer, NULL)) {
+ 		Q_strncpyz( cl_cdkey, buffer, 17 );
+ 	} else {
+ 		Q_strncpyz( cl_cdkey, "                ", 17 );
+ 	}
++#endif
+ }
+ 
+ /*
+@@ -2328,20 +2393,30 @@
+ static void Com_WriteCDKey( const char *filename, const char *ikey ) {
+ 	fileHandle_t	f;
+ 	char			fbuffer[MAX_OSPATH];
++#ifdef ELITEFORCE
++	char			key[23];
++#else
+ 	char			key[17];
++#endif
+ #ifndef _WIN32
+ 	mode_t			savedumask;
+ #endif
+ 
+-
++#ifdef ELITEFORCE
++	sprintf(fbuffer, "%s/efq3.key", filename);
++#else
+ 	sprintf(fbuffer, "%s/q3key", filename);
++#endif
+ 
+-
++#ifdef ELITEFORCE
++	Q_strncpyz( key, ikey, 23 );
++	key[22] = '\0';
++#else
+ 	Q_strncpyz( key, ikey, 17 );
+-
+ 	if(!CL_CDKeyValidate(key, NULL) ) {
+ 		return;
+ 	}
++#endif
+ 
+ #ifndef _WIN32
+ 	savedumask = umask(0077);
+@@ -2352,7 +2427,11 @@
+ 		goto out;
+ 	}
+ 
++#ifdef ELITEFORCE
++	FS_Write( key, strlen(key), f );
++#else
+ 	FS_Write( key, 16, f );
++#endif
+ 
+ 	FS_Printf( f, "\n// generated by quake, do not modify\r\n" );
+ 	FS_Printf( f, "// Do not give this file to ANYONE.\r\n" );
+@@ -2433,7 +2512,11 @@
+ 
+ 	// skip the q3config.cfg if "safe" is on the command line
+ 	if ( !Com_SafeMode() ) {
++#ifdef ELITEFORCE
++		Cbuf_AddText ("exec hmconfig.cfg\n");
++#else
+ 		Cbuf_AddText ("exec q3config.cfg\n");
++#endif
+ 	}
+ 
+ 	Cbuf_AddText ("exec autoexec.cfg\n");
+@@ -2523,6 +2606,9 @@
+ 
+ 	// add + commands from command line
+ 	if ( !Com_AddStartupCommands() ) {
++#ifdef ELITEFORCE
++		Cvar_Set( com_introPlayed->name, "1" );
++#else
+ 		// if the user didn't give any commands, run de
