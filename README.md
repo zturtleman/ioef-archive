@@ -34,6 +34,10 @@ In this git repo there are branches with the iostvoyHM patches applied to [ioqua
 
 The older patches were not completely backed up by archive.org (about half of the patch is missing). They are included in the [incomplete-patches-from-archive.org](incomplete-patches-from-archive.org) directory though they are probably not very useful.
 
+## License
+
+iostvoyHM is licensed under [the GNU GPLv2](COPYING.txt) (or at your option, any later version).
+
 ## Newer Ports
 
 Thilo Schulz updated it to ioquake3 git in 2016, see [thiloschulz/ioef](https://github.com/thiloschulz/ioef) repo.
