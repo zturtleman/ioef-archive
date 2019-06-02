@@ -1,6 +1,6 @@
 # ioef-archive
 
-ioEF (also known as iostvoyHM or efport) is a fork of ioquake3 for running _Star Trek Voyager: Elite Force Holomatch_ (multiplayer). It was created by [Thilo Schulz](https://github.com/thiloschulz).
+ioEF (also known as iostvoyHM) is a fork of ioquake3 for running _Star Trek Voyager: Elite Force Holomatch_ (multiplayer). It was created by [Thilo Schulz](https://github.com/thiloschulz).
 
 ## Patches
 
