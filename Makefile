@@ -462,8 +462,13 @@ else # ifeq darwin
 
 ifeq ($(PLATFORM),mingw32)
 
-  CC=gcc
-  WINDRES=windres
+  ifndef CC
+    CC=gcc
+  endif
+
+  ifndef WINDRES
+    WINDRES=windres
+  endif
 
   ARCH=x86
 
