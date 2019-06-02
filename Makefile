@@ -516,12 +516,12 @@ ifeq ($(PLATFORM),mingw32)
 
   ifeq ($(USE_CURL),1)
     BASE_CFLAGS += -DUSE_CURL
-    BASE_CFLAGS += $(CURL_CFLAGS)
     ifneq ($(USE_CURL_DLOPEN),1)
       ifeq ($(USE_LOCAL_HEADERS),1)
         BASE_CFLAGS += -DCURL_STATICLIB
         CLIENT_LIBS += $(LIBSDIR)/win32/libcurl.a
       else
+        BASE_CFLAGS += $(CURL_CFLAGS)
         CLIENT_LIBS += $(CURL_LIBS)
       endif
     endif
