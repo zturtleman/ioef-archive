@@ -8,7 +8,7 @@ In the [patches](patches) directory you can find the original iostvoyHM source c
 
 ## Branches
 
-In this git repo there are branches with the iostvoyHM patches applied to [ioquake3 git repository](https://github.com/ioquake/ioq3) and possibly some additional changes to fix or simplify compiling. Note that ioquake3 git rewrote the svn history to leave out changes to the website, tags, etc so the EF patch's ioquake3 revision number doesn't directly correspond to git commit number.
+In this git repo there are branches with the iostvoyHM patches applied to [ioquake3 git repository](https://github.com/ioquake/ioq3) and some additional changes to fix or simplify compiling. Note that ioquake3 git rewrote the svn history to leave out changes to the website, tags, etc so the EF patch's ioquake3 revision number doesn't directly correspond to the git commit number.
 
   * efv8-[iorev696](../../commit/08f44d82473c88dad14f1beb23f177f5e364cc20) (missing)
   * efbeta1-[iorev697](../../commit/08f44d82473c88dad14f1beb23f177f5e364cc20) (missing) <!-- Yes, it's the same commit as efv8 due to ioq3 git leaving out the website. -->
@@ -20,8 +20,8 @@ In this git repo there are branches with the iostvoyHM patches applied to [ioqua
   * [ef_1.37-iorev965](../../tree/ef_1.37-iorev965) (EF 1.37 release)
   * [ef_rev1245](../../tree/ef_rev1245)
   * [ef_rev1270](../../tree/ef_rev1270)
-  * [ef_rev1323](../../tree/ef_rev1323)
   * [ef_1.38-iorev1288](../../tree/ef_1.38-iorev1288)
+  * [ef_rev1323](../../tree/ef_rev1323)
   * [ef_1.38-iorev1579](../../tree/ef_1.38-iorev1579)
   * [ef_1.38-iorev2058](../../tree/ef_1.38-iorev2058)
   * [ef_1.38-iorev2110](../../tree/ef_1.38-iorev2110)
@@ -32,7 +32,7 @@ In this git repo there are branches with the iostvoyHM patches applied to [ioqua
 
 ## Missing Patches
 
-The older patches are were not completely backed up by archive.org (about half of the patch is missing). They are included in the [incomplete-patches-from-archive.org](incomplete-patches-from-archive.org) directory though they are probably not very useful.
+The older patches were not completely backed up by archive.org (about half of the patch is missing). They are included in the [incomplete-patches-from-archive.org](incomplete-patches-from-archive.org) directory though they are probably not very useful.
 
 ## Newer Ports
 
