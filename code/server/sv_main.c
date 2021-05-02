@@ -220,7 +220,11 @@ but not on every player enter or exit.
 ================
 */
 #define	HEARTBEAT_MSEC	300*1000
+#ifdef ELITEFORCE
+#define HEARTBEAT_GAME "STEF1"
+#else
 #define	HEARTBEAT_GAME	"QuakeArena-1"
+#endif
 void SV_MasterHeartbeat( void ) {
 	static netadr_t	adr[MAX_MASTER_SERVERS];
 	int			i;
@@ -270,7 +274,12 @@ void SV_MasterHeartbeat( void ) {
 		Com_Printf ("Sending heartbeat to %s\n", sv_master[i]->string );
 		// this command should be changed if the server info / status format
 		// ever incompatably changes
+		#ifdef ELITEFORCE
+		NET_OutOfBandPrint(NS_SERVER, adr[i], "\\heartbeat\\%d\\gamename\\%s\\",
+				   Cvar_VariableIntegerValue("net_port"),  HEARTBEAT_GAME);
+		#else
 		NET_OutOfBandPrint( NS_SERVER, adr[i], "heartbeat %s\n", HEARTBEAT_GAME );
+		#endif
 	}
 }
 
@@ -400,17 +409,22 @@ void SVC_Info( netadr_t from ) {
 
 	infostring[0] = 0;
 
-	// echo back the parameter to status. so servers can use it as a challenge
-	// to prevent timed spoofed reply packets that add ghost servers
-	Info_SetValueForKey( infostring, "challenge", Cmd_Argv(1) );
-
+#ifdef ELITEFORCE
+	Info_SetValueForKey( infostring, "protocol", va("%i", EFPROTOCOL_VERSION) );
+#else
 	Info_SetValueForKey( infostring, "protocol", va("%i", PROTOCOL_VERSION) );
+#endif
 	Info_SetValueForKey( infostring, "hostname", sv_hostname->string );
 	Info_SetValueForKey( infostring, "mapname", sv_mapname->string );
 	Info_SetValueForKey( infostring, "clients", va("%i", count) );
 	Info_SetValueForKey( infostring, "sv_maxclients", 
 		va("%i", sv_maxclients->integer - sv_privateClients->integer ) );
 	Info_SetValueForKey( infostring, "gametype", va("%i", sv_gametype->integer ) );
+
+	// echo back the parameter to status. so servers can use it as a challenge
+	// to prevent timed spoofed reply packets that add ghost servers
+	Info_SetValueForKey( infostring, "challenge", Cmd_Argv(1) );
+
 	Info_SetValueForKey( infostring, "pure", va("%i", sv_pure->integer ) );
 
 	if( sv_minPing->integer ) {
@@ -424,7 +438,15 @@ void SVC_Info( netadr_t from ) {
 		Info_SetValueForKey( infostring, "game", gamedir );
 	}
 
+	// echo back the parameter to status. so servers can use it as a challenge
+	// to prevent timed spoofed reply packets that add ghost servers
+	Info_SetValueForKey( infostring, "challenge", Cmd_Argv(1) );
+
+#ifdef ELITEFORCE
+	NET_OutOfBandPrint( NS_SERVER, from, "infoResponse \"%s\"", infostring );
+#else
 	NET_OutOfBandPrint( NS_SERVER, from, "infoResponse\n%s", infostring );
+#endif
 }
 
 /*
@@ -523,9 +545,11 @@ void SV_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 	MSG_BeginReadingOOB( msg );
 	MSG_ReadLong( msg );		// skip the -1 marker
 
+#ifndef ELITEFORCE
 	if (!Q_strncmp("connect", (char *) &msg->data[4], 7)) {
 		Huff_Decompress(msg, 12);
 	}
+#endif
 
 	s = MSG_ReadStringLine( msg );
 	Cmd_TokenizeString( s );
@@ -600,6 +624,10 @@ void SV_PacketEvent( netadr_t from, msg_t *msg ) {
 			Com_Printf( "SV_PacketEvent: fixing up a translated port\n" );
 			cl->netchan.remoteAddress.port = from.port;
 		}
+
+		#ifdef ELITEFORCE
+		msg->compat = cl->compat;
+		#endif
 
 		// make sure it is a valid, in sequence packet
 		if (SV_Netchan_Process(cl, msg)) {

@@ -460,8 +460,12 @@ void GLimp_SetGamma( unsigned char red[256], unsigned char green[256], unsigned 
 		{
 			if (table[j][i] < table[j][i-1])
 				table[j][i] = table[j][i-1];
+				
+                        Com_DPrintf("[%d][%d]: %d\n", j, i, table[j][i]);
 		}
 	}
+
+	
 
 	SDL_SetGammaRamp(table[0], table[1], table[2]);
 

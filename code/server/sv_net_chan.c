@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../qcommon/qcommon.h"
 #include "server.h"
 
+#ifndef ELITEFORCE
 /*
 ==============
 SV_Netchan_Encode
@@ -125,6 +126,7 @@ static void SV_Netchan_Decode( client_t *client, msg_t *msg ) {
 		*(msg->data + i) = *(msg->data + i) ^ key;
 	}
 }
+#endif
 
 /*
 =================
@@ -144,7 +146,9 @@ void SV_Netchan_TransmitNextFragment( client_t *client ) {
 			netchan_buffer_t *netbuf;
 			Com_DPrintf("#462 Netchan_TransmitNextFragment: popping a queued message for transmit\n");
 			netbuf = client->netchan_start_queue;
+			#ifndef ELITEFORCE
 			SV_Netchan_Encode( client, &netbuf->msg );
+			#endif
 			Netchan_Transmit( &client->netchan, netbuf->msg.cursize, netbuf->msg.data );
 			// pop from queue
 			client->netchan_start_queue = netbuf->next;
@@ -172,7 +176,11 @@ then buffer them and make sure they get sent in correct order
 */
 
 void SV_Netchan_Transmit( client_t *client, msg_t *msg) {	//int length, const byte *data ) {
-	MSG_WriteByte( msg, svc_EOF );
+	#ifdef ELITEFORCE
+	if(!msg->compat)
+	#endif
+		MSG_WriteByte( msg, svc_EOF );
+	
 	if (client->netchan.unsentFragments) {
 		netchan_buffer_t *netbuf;
 		Com_DPrintf("#462 SV_Netchan_Transmit: unsent fragments, stacked\n");
@@ -186,7 +194,9 @@ void SV_Netchan_Transmit( client_t *client, msg_t *msg) {	//int length, const by
 		// emit the next fragment of the current message for now
 		Netchan_TransmitNextFragment(&client->netchan);
 	} else {
+#ifndef ELITEFORCE
 		SV_Netchan_Encode( client, msg );
+#endif
 		Netchan_Transmit( &client->netchan, msg->cursize, msg->data );
 	}
 }
@@ -201,7 +211,9 @@ qboolean SV_Netchan_Process( client_t *client, msg_t *msg ) {
 	ret = Netchan_Process( &client->netchan, msg );
 	if (!ret)
 		return qfalse;
+#ifndef ELITEFORCE
 	SV_Netchan_Decode( client, msg );
+#endif
 	return qtrue;
 }
 
