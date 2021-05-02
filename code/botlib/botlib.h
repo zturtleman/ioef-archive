@@ -81,6 +81,9 @@ struct weaponinfo_s;
 //action flags
 #define ACTION_ATTACK			0x0000001
 #define ACTION_USE				0x0000002
+#ifdef ELITEFORCE
+#define ACTION_ALTATTACK		0x0000004
+#endif
 #define ACTION_RESPAWN			0x0000008
 #define ACTION_JUMP				0x0000010
 #define ACTION_MOVEUP			0x0000020
@@ -275,6 +278,13 @@ typedef struct ea_export_s
 	void	(*EA_Gesture)(int client);
 	void	(*EA_Talk)(int client);
 	void	(*EA_Attack)(int client);
+#ifdef ELITEFORCE
+	void	(*EA_AltAttack)(int client);
+	void	(*EA_UseItem)(int client, char *it);
+	void	(*EA_DropItem)(int client, char *it);
+	void	(*EA_UseInv)(int client, char *inv);
+	void	(*EA_DropInv)(int client, char *inv);
+#endif
 	void	(*EA_Use)(int client);
 	void	(*EA_Respawn)(int client);
 	void	(*EA_MoveUp)(int client);
@@ -330,7 +340,11 @@ typedef struct ai_export_s
 	void	(*BotReplaceSynonyms)(char *string, unsigned long int context);
 	int		(*BotLoadChatFile)(int chatstate, char *chatfile, char *chatname);
 	void	(*BotSetChatGender)(int chatstate, int gender);
+#ifdef ELITEFORCE
+	void	(*BotSetChatName)(int chatstate, char *name);
+#else
 	void	(*BotSetChatName)(int chatstate, char *name, int client);
+#endif
 	//-----------------------------------
 	// be_ai_goal.h
 	//-----------------------------------

@@ -1916,6 +1916,9 @@
 				RelativePath="..\..\client\snd_codec_wav.c">
 			</File>
 			<File
+				RelativePath="..\..\client\snd_codec_mp3.c">
+			</File>
+			<File
 				RelativePath="..\..\client\snd_codec_ogg.c">
 			</File>
 			<File
