@@ -4643,4 +4643,2119 @@ Index: code/client/snd_codec_mp3.c
 +    /*    Vol. 2 (2nd Ed.), pp102]                  */
 +    mt[0]= seed & 0xffffffff;
 +    for (mti=1; mti<MP3_DITH_N; mti++)
-+        mt[mti] = (69069 * mt[mti-
++        mt[mti] = (69069 * mt[mti-1]) & 0xffffffff;
++}
++
++unsigned long genrand(void)
++{
++    unsigned long y;
++    static unsigned long mag01[2]={0x0, MATRIX_A};
++    /* mag01[x] = x * MATRIX_A  for x=0,1 */
++
++    if (mti >= MP3_DITH_N) { /* generate MP3_DITH_N words at one time */
++        int kk;
++
++        if (mti == MP3_DITH_N+1)   /* if sgenrand() has not been called, */
++            sgenrand(4357); /* a default initial seed is used   */
++
++        for (kk=0;kk<MP3_DITH_N-MP3_DITH_M;kk++) {
++            y = (mt[kk]&UPPER_MASK)|(mt[kk+1]&LOWER_MASK);
++            mt[kk] = mt[kk+MP3_DITH_M] ^ (y >> 1) ^ mag01[y & 0x1];
++        }
++        for (;kk<MP3_DITH_N-1;kk++) {
++            y = (mt[kk]&UPPER_MASK)|(mt[kk+1]&LOWER_MASK);
++            mt[kk] = mt[kk+(MP3_DITH_M-MP3_DITH_N)] ^ (y >> 1) ^ mag01[y & 0x1];
++        }
++        y = (mt[MP3_DITH_N-1]&UPPER_MASK)|(mt[0]&LOWER_MASK);
++        mt[MP3_DITH_N-1] = mt[MP3_DITH_M-1] ^ (y >> 1) ^ mag01[y & 0x1];
++
++        mti = 0;
++    }
++
++    y = mt[mti++];
++    y ^= TEMPERING_SHIFT_U(y);
++    y ^= TEMPERING_SHIFT_S(y) & TEMPERING_MASK_B;
++    y ^= TEMPERING_SHIFT_T(y) & TEMPERING_MASK_C;
++    y ^= TEMPERING_SHIFT_L(y);
++
++    return y;
++}
++
++long triangular_dither_noise(int nbits) {
++    // parameter nbits : the peak-to-peak amplitude desired (in bits)
++    //  use with nbits set to    2 + nber of bits to be trimmed.
++    // (because triangular is made from two uniformly distributed processes,
++    // it starts at 2 bits peak-to-peak amplitude)
++    // see The Theory of Dithered Quantization by Robert Alexander Wannamaker
++    // for complete proof of why that's optimal
++
++    long v = (genrand()/2 - genrand()/2); // in ]-2^31, 2^31[
++    //int signe = (v>0) ? 1 : -1;
++    long P = 1 << (32 - nbits); // the power of 2
++    v /= P;
++    // now v in ]-2^(nbits-1), 2^(nbits-1) [
++
++    return v;
++}
++
++#endif // MP3_DITHERING
++
++/************************ decoder functions ***************************/
++
++/*
++=================
++S_MP3_Scale
++
++Converts the signal to 16 bit LE-PCM data and does dithering.
++
++- borrowed from xmms-mad plugin source.
++=================
++*/
++
++/*
++ * xmms-mad - mp3 plugin for xmms
++ * Copyright (C) 2001-2002 Sam Clegg
++ */
++
++signed int S_MP3_Scale(mad_fixed_t sample)
++{
++	int n_bits_to_loose = MAD_F_FRACBITS + 1 - 16;
++#ifdef MP3_DITHERING
++	int dither;
++#endif
++	
++	// round
++	sample += (1L << (n_bits_to_loose - 1));
++
++#ifdef MP3_DITHERING
++	dither = triangular_dither_noise(n_bits_to_loose + 1);
++	sample += dither;
++#endif
++
++	/* clip */
++	if (sample >= MAD_F_ONE)
++		sample = MAD_F_ONE - 1;
++	else if (sample < -MAD_F_ONE)
++		sample = -MAD_F_ONE;
++
++	/* quantize */
++	return sample >> n_bits_to_loose;
++}
++
++
++
++/*
++=================
++S_MP3_PCMCopy
++
++Copy and convert pcm data until bytecount bytes have been written.
++return the position in pcm->samples.
++indicate the amount of actually written bytes in wrotecnt.
++=================
++*/
++
++int S_MP3_PCMCopy(byte *buf, struct mad_pcm *pcm, int bufofs,
++			 int sampleofs, int bytecount, int *wrotecnt)
++{
++	int written = 0;
++	signed int sample;
++	int framesize = pcm->channels * MP3_SAMPLE_WIDTH;
++
++	// add new pcm data.
++	while(written < bytecount && sampleofs < pcm->length)
++	{
++		// output to 16 bit little endian PCM
++		sample = S_MP3_Scale(pcm->samples[0][sampleofs]);
++		buf[bufofs++] = sample & 0xff;
++		buf[bufofs++] = (sample >> 8) & 0xff;
++		
++		if(pcm->channels == 2)
++		{
++			sample = S_MP3_Scale(pcm->samples[1][sampleofs]);
++			buf[bufofs++] = sample & 0xff;
++			buf[bufofs++] = (sample >> 8) & 0xff;
++		}
++		
++		sampleofs++;
++		written += framesize;
++	}	
++
++	if(wrotecnt)
++		*wrotecnt = written;
++
++	return sampleofs;
++}
++
++
++/*
++=================
++S_MP3_Decode
++=================
++*/
++
++// gets executed for every decoded frame.
++int S_MP3_Decode(snd_stream_t *stream)
++{
++	struct snd_codec_mp3_info *mp3info;
++	struct mad_stream *madstream;
++	struct mad_frame *madframe;
++	struct mad_synth *madsynth;
++	struct mad_pcm *pcm;
++	int cursize;
++	int samplecount;
++	int needcount;
++	int wrote;
++	int retval;
++
++	if(!stream)
++		return -1;
++
++	mp3info = stream->ptr;
++	madstream = &mp3info->madstream;
++	madframe = &mp3info->madframe;
++
++	if(mad_frame_decode(madframe, madstream))
++	{
++		if(madstream->error == MAD_ERROR_BUFLEN)
++		{
++			// we need more data. Read another chunk.
++			retval = S_MP3_ReadData(stream, madstream, mp3info->encbuf, sizeof(mp3info->encbuf));
++
++			// call myself again now that buffer is full.
++			if(retval > 0)
++				retval = S_MP3_Decode(stream);
++		}
++		else if(MAD_RECOVERABLE(madstream->error))
++		{
++			mad_stream_skip(madstream, madstream->skiplen);
++			return S_MP3_Decode(stream);
++		}
++		else
++			retval = -1;
++
++		return retval;
++	}
++
++	// check whether this really is an mp3
++	if(madframe->header.layer != MAD_LAYER_III)
++		return -1;
++
++	// generate pcm data
++	madsynth = &mp3info->madsynth;
++	mad_synth_frame(madsynth, madframe);
++
++	pcm = &madsynth->pcm;
++
++	// perform a few checks to see whether something changed that shouldn't.
++		
++	if(stream->info.rate != pcm->samplerate ||
++	   stream->info.channels != pcm->channels)
++	{
++		return -1;
++	}
++	// see whether we have got enough data now.
++	cursize = pcm->length * pcm->channels * stream->info.width;
++	needcount = mp3info->destsize - mp3info->destlen;
++
++	// Copy exactly as many samples as required.
++	samplecount = S_MP3_PCMCopy(mp3info->dest, pcm,
++				    mp3info->destlen, 0, needcount, &wrote);
++	mp3info->destlen += wrote;
++	
++	if(samplecount < pcm->length)
++	{
++		// Not all samples got copied. Copy the rest into the pcm buffer.
++		samplecount = S_MP3_PCMCopy(mp3info->pcmbuf, pcm,
++					    mp3info->buflen,
++					    samplecount,
++					    mp3info->pcmbufsize - mp3info->buflen,
++					    &wrote);
++		mp3info->buflen += wrote;
++		
++
++		if(samplecount < pcm->length)
++		{
++			// The pcm buffer was not large enough. Make it bigger.
++			byte *newbuf = Z_Malloc(cursize);
++			
++			if(mp3info->pcmbuf)
++			{
++				memcpy(newbuf, mp3info->pcmbuf, mp3info->buflen);
++				Z_Free(mp3info->pcmbuf);
++			}
++			
++			mp3info->pcmbuf = newbuf;
++			mp3info->pcmbufsize = cursize;
++			
++			samplecount = S_MP3_PCMCopy(mp3info->pcmbuf, pcm,
++						    mp3info->buflen,
++						    samplecount,
++						    mp3info->pcmbufsize - mp3info->buflen,
++						    &wrote);
++			mp3info->buflen += wrote;		
++		}		
++		
++		// we're definitely done.
++		retval = 0;
++	}
++	else if(mp3info->destlen >= mp3info->destsize)
++		retval = 0;
++	else
++		retval = 1;
++
++	return retval;
++}
++
++/*************** Callback functions for quake3 ***************/
++
++/*
++=================
++S_MP3_CodecOpenStream
++=================
++*/
++
++snd_stream_t *S_MP3_CodecOpenStream(const char *filename)
++{
++	snd_stream_t *stream;
++	struct snd_codec_mp3_info *mp3info;
++
++	// Open the stream
++	stream = S_CodecUtilOpen(filename, &mp3_codec);
++	if(!stream || stream->length <= 0)
++		return NULL;
++
++	// We have to scan through the MP3 to determine the important mp3 info.
++	if(S_MP3_Scanfile(stream) < 0)
++	{
++		// scanning didn't work out...
++		S_CodecUtilClose(stream);
++		return NULL;
++	}
++
++	// Initialize the mp3 info structure we need for streaming
++	mp3info = Z_Malloc(sizeof(*mp3info));
++	if(!mp3info)
++	{
++		S_CodecUtilClose(stream);
++		return NULL;
++	}
++
++	stream->ptr = mp3info;
++
++	// initialize the libmad control structures.
++	mad_stream_init(&mp3info->madstream);
++	mad_frame_init(&mp3info->madframe);
++	mad_synth_init(&mp3info->madsynth);
++
++	if(S_MP3_ReadData(stream, &mp3info->madstream, mp3info->encbuf, sizeof(mp3info->encbuf)) <= 0)
++	{
++		// we didnt read anything, that's bad.
++		S_MP3_CodecCloseStream(stream);
++		return NULL;
++	}
++
++	return stream;
++}
++
++/*
++=================
++S_MP3_CodecCloseStream
++=================
++*/
++
++// free all memory we allocated.
++void S_MP3_CodecCloseStream(snd_stream_t *stream)
++{
++	struct snd_codec_mp3_info *mp3info;
++	
++	if(!stream)
++		return;
++		
++	// free all data in our mp3info tree
++
++	if(stream->ptr)
++	{
++		mp3info = stream->ptr;
++
++		if(mp3info->pcmbuf)
++			Z_Free(mp3info->pcmbuf);
++
++		mad_synth_finish(&mp3info->madsynth);
++		mad_frame_finish(&mp3info->madframe);
++		mad_stream_finish(&mp3info->madstream);
++	
++		Z_Free(stream->ptr);
++	}
++
++	S_CodecUtilClose(stream);
++}
++
++/*
++=================
++S_MP3_CodecReadStream
++=================
++*/
++int S_MP3_CodecReadStream(snd_stream_t *stream, int bytes, void *buffer)
++{
++	struct snd_codec_mp3_info *mp3info;
++	int retval;
++	
++	if(!stream)
++		return -1;
++		
++	mp3info = stream->ptr;
++
++	// Make sure we get complete frames all the way through.
++	bytes -= bytes % (stream->info.channels * stream->info.width);
++
++	if(mp3info->buflen)
++	{
++		if(bytes < mp3info->buflen)
++		{
++			// we still have enough bytes in our decoded pcm buffer
++			memcpy(buffer, mp3info->pcmbuf, bytes);
++		
++			// remove the portion from our buffer.
++			mp3info->buflen -= bytes;
++			memmove(mp3info->pcmbuf, &mp3info->pcmbuf[bytes], mp3info->buflen);
++			return bytes;
++		}
++		else
++		{
++			// copy over the samples we already have.
++			memcpy(buffer, mp3info->pcmbuf, mp3info->buflen);
++			mp3info->destlen = mp3info->buflen;
++			mp3info->buflen = 0;
++		}
++	}
++	else
++		mp3info->destlen = 0;
++	
++	mp3info->dest = buffer;
++	mp3info->destsize = bytes;
++
++	do
++	{
++		retval = S_MP3_Decode(stream);
++	} while(retval > 0);
++	
++	// if there was an error return nothing.
++	if(retval < 0)
++		return 0;
++	
++	return mp3info->destlen;
++}
++
++/*
++=====================================================================
++S_MP3_CodecLoad
++
++We handle S_MP3_CodecLoad as a special case of the streaming functions 
++where we read the whole stream at once.
++======================================================================
++*/
++void *S_MP3_CodecLoad(const char *filename, snd_info_t *info)
++{
++	snd_stream_t *stream;
++	byte *pcmbuffer;
++
++	// check if input is valid
++	if(!filename)
++		return NULL;
++
++	stream = S_MP3_CodecOpenStream(filename);
++	
++	if(!stream)
++		return NULL;
++		
++        // copy over the info
++        info->rate = stream->info.rate;
++        info->width = stream->info.width;
++        info->channels = stream->info.channels;
++        info->samples = stream->info.samples;
++        info->dataofs = stream->info.dataofs;
++	
++	// allocate enough buffer for all pcm data
++	pcmbuffer = Z_Malloc(stream->info.size);
++	if(!pcmbuffer)
++	{
++		S_MP3_CodecCloseStream(stream);
++		return NULL;
++	}
++
++	info->size = S_MP3_CodecReadStream(stream, stream->info.size, pcmbuffer);
++
++	if(info->size <= 0)
++	{
++		// we didn't read anything at all. darn.
++		Z_Free(pcmbuffer);
++		pcmbuffer = NULL;
++	}
++
++	S_MP3_CodecCloseStream(stream);
++
++	return pcmbuffer;
++}
++
++#endif // USE_CODEC_MP3
+Index: code/client/cl_main.c
+===================================================================
+--- code/client/cl_main.c	(revision 716)
++++ code/client/cl_main.c	(working copy)
+@@ -291,14 +291,25 @@
+ 	if ( Cmd_Argc() == 2 ) {
+ 		s = Cmd_Argv(1);
+ 		Q_strncpyz( demoName, s, sizeof( demoName ) );
+-		Com_sprintf (name, sizeof(name), "demos/%s.dm_%d", demoName, PROTOCOL_VERSION );
++#ifdef ELITEFORCE
++		if(clc.compat)
++			Com_sprintf (name, sizeof(name), "demos/%s.efdemo", demoName);
++		else
++#endif
++			Com_sprintf (name, sizeof(name), "demos/%s.dm_%d", demoName, PROTOCOL_VERSION );
+ 	} else {
+ 		int		number;
+ 
+ 		// scan for a free demo name
+ 		for ( number = 0 ; number <= 9999 ; number++ ) {
+ 			CL_DemoFilename( number, demoName );
+-			Com_sprintf (name, sizeof(name), "demos/%s.dm_%d", demoName, PROTOCOL_VERSION );
++			#ifdef ELITEFORCE
++			if(clc.compat)
++				Com_sprintf (name, sizeof(name), "demos/%s.efdemo", demoName);
++			else
++			#else
++				Com_sprintf (name, sizeof(name), "demos/%s.dm_%d", demoName, PROTOCOL_VERSION );
++			#endif
+ 
+ 			len = FS_ReadFile( name, NULL );
+ 			if ( len <= 0 ) {
+@@ -329,11 +340,23 @@
+ 	clc.demowaiting = qtrue;
+ 
+ 	// write out the gamestate message
+-	MSG_Init (&buf, bufData, sizeof(bufData));
+-	MSG_Bitstream(&buf);
++	#ifdef ELITEFORCE
++	if(clc.compat)
++	{
++		MSG_InitOOB(&buf, bufData, sizeof(bufData));
++		buf.compat = qtrue;
++	}
++	else
++	{
++	#endif
++		MSG_Init (&buf, bufData, sizeof(bufData));
++		MSG_Bitstream(&buf);
+ 
+-	// NOTE, MRE: all server->client messages now acknowledge
+-	MSG_WriteLong( &buf, clc.reliableSequence );
++		// NOTE, MRE: all server->client messages now acknowledge
++		MSG_WriteLong( &buf, clc.reliableSequence );
++	#ifdef ELITEFORCE
++	}
++	#endif
+ 
+ 	MSG_WriteByte (&buf, svc_gamestate);
+ 	MSG_WriteLong (&buf, clc.serverCommandSequence );
+@@ -360,18 +383,31 @@
+ 		MSG_WriteDeltaEntity (&buf, &nullstate, ent, qtrue );
+ 	}
+ 
+-	MSG_WriteByte( &buf, svc_EOF );
++	#ifdef ELITEFORCE
++	if(buf.compat)
++		MSG_WriteByte(&buf, 0);
++	else
++	#endif
++		MSG_WriteByte( &buf, svc_EOF );
+ 	
+ 	// finished writing the gamestate stuff
+ 
+-	// write the client num
+-	MSG_WriteLong(&buf, clc.clientNum);
+-	// write the checksum feed
+-	MSG_WriteLong(&buf, clc.checksumFeed);
++	#ifdef ELITEFORCE
++	if(!buf.compat)
++	{
++	#endif
++		// write the client num
++		MSG_WriteLong(&buf, clc.clientNum);
+ 
+-	// finished writing the client packet
+-	MSG_WriteByte( &buf, svc_EOF );
++		// write the checksum feed
++		MSG_WriteLong(&buf, clc.checksumFeed);
+ 
++		// finished writing the client packet
++		MSG_WriteByte( &buf, svc_EOF );
++	#ifdef ELITEFORCE
++	}
++	#endif
++
+ 	// write it to the demo file
+ 	len = LittleLong( clc.serverMessageSequence - 1 );
+ 	FS_Write (&len, 4, clc.demofile);
+@@ -436,7 +472,15 @@
+ 	clc.serverMessageSequence = LittleLong( s );
+ 
+ 	// init the message
+-	MSG_Init( &buf, bufData, sizeof( bufData ) );
++	#ifdef ELITEFORCE
++	if(clc.compat)
++	{
++		MSG_InitOOB(&buf, bufData, sizeof(bufData));
++		buf.compat = qtrue;
++	}
++	else
++	#endif
++		MSG_Init( &buf, bufData, sizeof( bufData ) );
+ 
+ 	// get the length
+ 	r = FS_Read (&buf.cursize, 4, clc.demofile);
+@@ -469,10 +513,26 @@
+ CL_WalkDemoExt
+ ====================
+ */
++#ifdef ELITEFORCE
++static void CL_WalkDemoExt(char *arg, char *name, int *demofile, qboolean *compat)
++#else
+ static void CL_WalkDemoExt(char *arg, char *name, int *demofile)
++#endif
+ {
+ 	int i = 0;
+ 	*demofile = 0;
++	
++	#ifdef ELITEFORCE
++	Com_sprintf(name, MAX_OSPATH, "demos/%s.efdemo", arg);
++	FS_FOpenFileRead(name, demofile, qtrue);
++	if(*demofile)
++	{
++		Com_Printf("Demo file: %s\n", name);
++		*compat = qtrue;
++		return;
++	}
++	#endif
++	
+ 	while(demo_protocols[i])
+ 	{
+ 		Com_sprintf (name, MAX_OSPATH, "demos/%s.dm_%d", arg, demo_protocols[i]);
+@@ -501,6 +561,9 @@
+ 	char		*arg, *ext_test;
+ 	int			protocol, i;
+ 	char		retry[MAX_OSPATH];
++	#ifdef ELITEFORCE
++	qboolean compat = qfalse;	// For demos using the old EF protocol.
++	#endif
+ 
+ 	if (Cmd_Argc() != 2) {
+ 		Com_Printf ("playdemo <demoname>\n");
+@@ -515,31 +578,52 @@
+ 	// open the demo file
+ 	arg = Cmd_Argv(1);
+ 	
+-	// check for an extension .dm_?? (?? is protocol)
+-	ext_test = arg + strlen(arg) - 6;
+-	if ((strlen(arg) > 6) && (ext_test[0] == '.') && ((ext_test[1] == 'd') || (ext_test[1] == 'D')) && ((ext_test[2] == 'm') || (ext_test[2] == 'M')) && (ext_test[3] == '_'))
++#ifdef ELITEFORCE
++	ext_test = arg + strlen(arg) - 7;
++	if(!strcmp(ext_test, ".efdemo"))
+ 	{
+-		protocol = atoi(ext_test+4);
+-		i=0;
+-		while(demo_protocols[i])
++		Com_sprintf (name, sizeof(name), "demos/%s", arg);
++		FS_FOpenFileRead(name, &clc.demofile, qtrue);
++		compat = qtrue;
++	}
++	else
++	{
++#endif
++		// check for an extension .dm_?? (?? is protocol)
++		ext_test = arg + strlen(arg) - 6;
++		if ((strlen(arg) > 6) && (ext_test[0] == '.') && ((ext_test[1] == 'd') || (ext_test[1] == 'D')) && ((ext_test[2] == 'm') || (ext_test[2] == 'M')) && (ext_test[3] == '_'))
+ 		{
+-			if (demo_protocols[i] == protocol)
+-				break;
+-			i++;
+-		}
+-		if (demo_protocols[i])
+-		{
+-			Com_sprintf (name, sizeof(name), "demos/%s", arg);
+-			FS_FOpenFileRead( name, &clc.demofile, qtrue );
++			protocol = atoi(ext_test+4);
++			i=0;
++			while(demo_protocols[i])
++			{
++				if (demo_protocols[i] == protocol)
++					break;
++				i++;
++			}
++			if (demo_protocols[i])
++			{
++				Com_sprintf (name, sizeof(name), "demos/%s", arg);
++				FS_FOpenFileRead( name, &clc.demofile, qtrue );
++			} else {
++				Com_Printf("Protocol %d not supported for demos\n", protocol);
++				Q_strncpyz(retry, arg, sizeof(retry));
++				retry[strlen(retry)-6] = 0;
++				#ifdef ELITEFORCE
++				CL_WalkDemoExt(retry, name, &clc.demofile, &compat);
++				#else
++				CL_WalkDemoExt( retry, name, &clc.demofile );
++				#endif
++			}
+ 		} else {
+-			Com_Printf("Protocol %d not supported for demos\n", protocol);
+-			Q_strncpyz(retry, arg, sizeof(retry));
+-			retry[strlen(retry)-6] = 0;
+-			CL_WalkDemoExt( retry, name, &clc.demofile );
++#ifdef ELITEFORCE
++			CL_WalkDemoExt(arg, name, &clc.demofile, &compat);
+ 		}
+-	} else {
+-		CL_WalkDemoExt( arg, name, &clc.demofile );
+ 	}
++#else
++			CL_WalkDemoExt( arg, name, &clc.demofile );
++		}
++#endif
+ 	
+ 	if (!clc.demofile) {
+ 		Com_Error( ERR_DROP, "couldn't open %s", name);
+@@ -551,6 +635,11 @@
+ 
+ 	cls.state = CA_CONNECTED;
+ 	clc.demoplaying = qtrue;
++
++	#ifdef ELITEFORCE
++	clc.compat = compat;
++	#endif
++
+ 	Q_strncpyz( cls.servername, Cmd_Argv(1), sizeof( cls.servername ) );
+ 
+ 	// read demo messages until connected
+@@ -1167,7 +1256,10 @@
+ 	// "cp"
+ 	// "Yf"
+ 	Com_sprintf(cMsg, sizeof(cMsg), "Yf ");
+-	Q_strcat(cMsg, sizeof(cMsg), va("%d ", cl.serverId) );
++#ifdef ELITEFORCE
++	if(!clc.compat)
++#endif	
++		Q_strcat(cMsg, sizeof(cMsg), va("%d ", cl.serverId) );
+ 	Q_strcat(cMsg, sizeof(cMsg), pChecksums);
+ 	for (i = 0; i < 2; i++) {
+ 		cMsg[i] += 10;
+@@ -1541,7 +1633,12 @@
+ 		port = Cvar_VariableValue ("net_qport");
+ 
+ 		Q_strncpyz( info, Cvar_InfoString( CVAR_USERINFO ), sizeof( info ) );
+-		Info_SetValueForKey( info, "protocol", va("%i", PROTOCOL_VERSION ) );
++		#ifdef ELITEFORCE
++		if(clc.compat)
++			Info_SetValueForKey( info, "protocol", va("%i", EFPROTOCOL_VERSION ) );
++		else
++		#endif
++			Info_SetValueForKey( info, "protocol", va("%i", PROTOCOL_VERSION ) );
+ 		Info_SetValueForKey( info, "qport", va("%i", port ) );
+ 		Info_SetValueForKey( info, "challenge", va("%i", clc.challenge ) );
+ 		
+@@ -1557,7 +1654,11 @@
+ 		data[10+i] = 0;
+ 
+     // NOTE TTimo don't forget to set the right data length!
+-		NET_OutOfBandData( NS_CLIENT, clc.serverAddress, (byte *) &data[0], i+10 );
++    		#ifdef ELITEFORCE
++			NET_OutOfBandPrint( NS_CLIENT, clc.serverAddress, (byte *) &data[0]);
++		#else
++			NET_OutOfBandData( NS_CLIENT, clc.serverAddress, (byte *) &data[0], i+10 );
++		#endif
+ 		// the most current userinfo has been sent, so watch for any
+ 		// newer changes to userinfo variables
+ 		cvar_modifiedFlags &= ~CVAR_USERINFO;
+@@ -1667,6 +1768,9 @@
+ 	int				numservers;
+ 	byte*			buffptr;
+ 	byte*			buffend;
++	#ifdef ELITEFORCE
++	char strbyte[3] = "FF";
++	#endif
+ 	
+ 	Com_Printf("CL_ServersResponsePacket\n");
+ 
+@@ -1696,6 +1800,21 @@
+ 			break;
+ 		}
+ 
++#ifdef ELITEFORCE
++		// EliteForce uses a slightly different format with bytes encoded
++		// in hex values.
++		for(i = 0; i < 6; i++)
++		{
++			strbyte[0] = toupper(*buffptr++);
++			strbyte[1] = toupper(*buffptr++);
++
++			if(i < 4)
++				addresses[numservers].ip[i] = strtoul(strbyte, NULL, 16);
++			else
++				((unsigned char *) &addresses[numservers].port)[i - 4] =
++					strtoul(strbyte, NULL, 16);
++		}
++#else
+ 		// parse out ip
+ 		addresses[numservers].ip[0] = *buffptr++;
+ 		addresses[numservers].ip[1] = *buffptr++;
+@@ -1706,7 +1825,7 @@
+ 		addresses[numservers].port = (*buffptr++)<<8;
+ 		addresses[numservers].port += *buffptr++;
+ 		addresses[numservers].port = BigShort( addresses[numservers].port );
+-
++#endif
+ 		// syntax check
+ 		if (*buffptr != '\\') {
+ 			break;
+@@ -1833,6 +1952,9 @@
+ 			return;
+ 		}
+ 		Netchan_Setup (NS_CLIENT, &clc.netchan, from, Cvar_VariableValue( "net_qport" ) );
++		#ifdef ELITEFORCE
++		clc.netchan.compat = clc.compat;
++		#endif
+ 		cls.state = CA_CONNECTED;
+ 		clc.lastPacketSentTime = -9999;		// send first packet immediately
+ 		return;
+@@ -1878,8 +2000,20 @@
+ 	// echo request from server
+ 	if ( !Q_stricmp(c, "print") ) {
+ 		s = MSG_ReadString( msg );
+-		Q_strncpyz( clc.serverMessage, s, sizeof( clc.serverMessage ) );
+-		Com_Printf( "%s", s );
++		#ifdef ELITEFORCE
++		if(!Q_strncmp(s, "Server uses protocol version 24.\n", 33))
++		{
++			clc.compat = qtrue;
++			cls.state = CA_CONNECTING;
++		}
++		else
++		{
++		#endif
++			Q_strncpyz( clc.serverMessage, s, sizeof( clc.serverMessage ) );
++			Com_Printf( "%s", s );
++		#ifdef ELITEFORCE
++		}
++		#endif
+ 		return;
+ 	}
+ 
+@@ -1904,7 +2038,10 @@
+ 	int		headerBytes;
+ 
+ 	clc.lastPacketTime = cls.realtime;
+-
++	#ifdef ELITEFORCE
++	msg->compat = clc.compat;
++	#endif
++	
+ 	if ( msg->cursize >= 4 && *(int *)msg->data == -1 ) {
+ 		CL_ConnectionlessPacket( from, msg );
+ 		return;
+@@ -2171,7 +2308,11 @@
+ 	re.BeginRegistration( &cls.glconfig );
+ 
+ 	// load character sets
++#ifdef ELITEFORCE
++	cls.charSetShader = re.RegisterShaderNoMip( "gfx/2d/charsgrid_med" );
++#else
+ 	cls.charSetShader = re.RegisterShader( "gfx/2d/bigchars" );
++#endif
+ 	cls.whiteShader = re.RegisterShader( "white" );
+ 	cls.consoleShader = re.RegisterShader( "console" );
+ 	g_console_field_width = cls.glconfig.vidWidth / SMALLCHAR_WIDTH - 2;
+@@ -2645,11 +2786,28 @@
+ 	char	*infoString;
+ 	int		prot;
+ 
++#ifdef ELITEFORCE
++	// eliteforce doesn't send a \n after infoResponse..
++	infoString = strchr(msg->data, '"');
++	if(!infoString)
++		return;
++	msg->readcount = (int) ((byte *) ++infoString - msg->data);
++	msg->bit = msg->readcount << 3;
++	// find the second " character and empty it.
++	infoString = strchr(infoString, '"');
++	if(infoString)
++		*infoString = '\0';
++#endif
++
+ 	infoString = MSG_ReadString( msg );
+ 
+ 	// if this isn't the correct protocol version, ignore it
+ 	prot = atoi( Info_ValueForKey( infoString, "protocol" ) );
++#ifdef ELITEFORCE
++	if ( prot != PROTOCOL_VERSION && prot != EFPROTOCOL_VERSION ) {
++#else
+ 	if ( prot != PROTOCOL_VERSION ) {
++#endif
+ 		Com_DPrintf( "Different protocol info packet: %s\n", infoString );
+ 		return;
+ 	}
+@@ -2687,7 +2845,11 @@
+ 					type = 0;
+ 					break;
+ 			}
++#ifdef ELITEFORCE
++			Info_SetValueForKey( cl_pinglist[i].info, "nettype", str );
++#else
+ 			Info_SetValueForKey( cl_pinglist[i].info, "nettype", va("%d", type) );
++#endif
+ 			CL_SetServerInfoByAddress(from, infoString, cl_pinglist[i].time);
+ 
+ 			return;
+@@ -2987,6 +3149,9 @@
+ 	int			count;
+ 	char		*buffptr;
+ 	char		command[1024];
++	#ifdef ELITEFORCE
++	int bmaster;
++	#endif
+ 	
+ 	if ( Cmd_Argc() < 3) {
+ 		Com_Printf( "usage: globalservers <master# 0-1> <protocol> [keywords]\n");
+@@ -3000,18 +3165,46 @@
+ 	// reset the list, waiting for response
+ 	// -1 is used to distinguish a "no response"
+ 
++
++	#ifdef ELITEFORCE
++	if((bmaster = Cvar_VariableIntegerValue("ui_browserMaster")))
++	{
++		char *msname;
++		
++		switch(bmaster)
++		{
++			case 1: msname = Cvar_VariableString("sv_master1");
++			break;
++			case 2: msname = Cvar_VariableString("sv_master2");
++			break;
++			case 3: msname = Cvar_VariableString("sv_master3");
++			break;
++			case 4: msname = Cvar_VariableString("sv_master4");
++			break;
++			case 5: msname = Cvar_VariableString("sv_master5");
++			break;
++			default: msname = MASTER_SERVER_NAME;
++			break;
++		}
++		
++		NET_StringToAdr(msname, &to);
++	}
++	else
++	#endif
++		NET_StringToAdr( MASTER_SERVER_NAME, &to );
++
+ 	if( cls.masterNum == 1 ) {
+-		NET_StringToAdr( MASTER_SERVER_NAME, &to );
+ 		cls.nummplayerservers = -1;
+ 		cls.pingUpdateSource = AS_MPLAYER;
+ 	}
+ 	else {
+-		NET_StringToAdr( MASTER_SERVER_NAME, &to );
+ 		cls.numglobalservers = -1;
+ 		cls.pingUpdateSource = AS_GLOBAL;
+ 	}
+ 	to.type = NA_IP;
++	#ifndef ELITEFORCE
+ 	to.port = BigShort(PORT_MASTER);
++	#endif
+ 
+ 	sprintf( command, "getservers %s", Cmd_Argv(2) );
+ 
+Index: code/client/snd_dma.c
+===================================================================
+--- code/client/snd_dma.c	(revision 716)
++++ code/client/snd_dma.c	(working copy)
+@@ -338,10 +338,20 @@
+ 	sfx->inMemory = qfalse;
+ 	sfx->soundCompressed = compressed;
+ 
+-  S_memoryLoad(sfx);
++	S_memoryLoad(sfx);
+ 
+ 	if ( sfx->defaultSound ) {
++		#ifdef ELITEFORCE
++		int hash = S_HashSFXName(name);
++		// free the slot up.
++		sfx->soundName[0] = '\0';
++		sfx->inMemory = qfalse;
++		sfx->defaultSound = qfalse;
++		// the new entry is head anyways.
++		sfxHash[hash] = sfx->next;
++		#else
+ 		Com_Printf( S_COLOR_YELLOW "WARNING: could not find %s - using default\n", sfx->soundName );
++		#endif
+ 		return 0;
+ 	}
+ 
+@@ -364,7 +374,11 @@
+ 		Com_Memset( s_knownSfx, 0, sizeof( s_knownSfx ) );
+ 		Com_Memset(sfxHash, 0, sizeof(sfx_t *)*LOOP_HASH);
+ 
++#ifdef ELITEFORCE
++		S_Base_RegisterSound("sound/null.wav", qfalse); // Eliteforce specific sound.
++#else
+ 		S_Base_RegisterSound("sound/feedback/hit.wav", qfalse);		// changed to a sound in baseq3
++#endif
+ 	}
+ }
+ 
+@@ -1303,9 +1317,11 @@
+ 		return;
+ 	}
+ 
++	#ifndef ELITEFORCE
+ 	if(s_backgroundStream->info.channels != 2 || s_backgroundStream->info.rate != 22050) {
+ 		Com_Printf(S_COLOR_YELLOW "WARNING: music file %s is not 22k stereo\n", intro );
+ 	}
++	#endif
+ }
+ 
+ /*
+Index: code/client/cl_input.c
+===================================================================
+--- code/client/cl_input.c	(revision 716)
++++ code/client/cl_input.c	(working copy)
+@@ -353,8 +353,10 @@
+ void CL_MouseEvent( int dx, int dy, int time ) {
+ 	if ( cls.keyCatchers & KEYCATCH_UI ) {
+ 		VM_Call( uivm, UI_MOUSE_EVENT, dx, dy );
++#ifndef ELITEFORCE
+ 	} else if (cls.keyCatchers & KEYCATCH_CGAME) {
+ 		VM_Call (cgvm, CG_MOUSE_EVENT, dx, dy);
++#endif
+ 	} else {
+ 		cl.mouseDx[cl.mouseIndex] += dx;
+ 		cl.mouseDy[cl.mouseIndex] += dy;
+@@ -694,7 +696,10 @@
+ 	usercmd_t	nullcmd;
+ 	int			packetNum;
+ 	int			oldPacketNum;
+-	int			count, key;
++	int			count;
++	#ifndef ELITEFORCE
++	int			key;
++	#endif
+ 
+ 	// don't send anything if playing back a demo
+ 	if ( clc.demoplaying || cls.state == CA_CINEMATIC ) {
+@@ -704,9 +709,21 @@
+ 	Com_Memset( &nullcmd, 0, sizeof(nullcmd) );
+ 	oldcmd = &nullcmd;
+ 
+-	MSG_Init( &buf, data, sizeof(data) );
++	#ifdef ELITEFORCE
++	if(clc.compat)
++	{
++		MSG_InitOOB( &buf, data, sizeof(data) );
++		buf.compat = clc.compat;
++	}
++	else
++	{	
++	#endif
++		MSG_Init( &buf, data, sizeof(data) );
++		MSG_Bitstream( &buf );
++	#ifdef ELITEFORCE
++	}
++	#endif
+ 
+-	MSG_Bitstream( &buf );
+ 	// write the current serverId so the server
+ 	// can tell if this is from the current gameState
+ 	MSG_WriteLong( &buf, cl.serverId );
+@@ -756,18 +773,24 @@
+ 		// write the command count
+ 		MSG_WriteByte( &buf, count );
+ 
++#ifndef ELITEFORCE
+ 		// use the checksum feed in the key
+ 		key = clc.checksumFeed;
+ 		// also use the message acknowledge
+ 		key ^= clc.serverMessageSequence;
+ 		// also use the last acknowledged server command in the key
+ 		key ^= Com_HashKey(clc.serverCommands[ clc.serverCommandSequence & (MAX_RELIABLE_COMMANDS-1) ], 32);
++#endif
+ 
+ 		// write all the commands, including the predicted command
+ 		for ( i = 0 ; i < count ; i++ ) {
+ 			j = (cl.cmdNumber - count + i + 1) & CMD_MASK;
+ 			cmd = &cl.cmds[j];
++#ifdef ELITEFORCE
++			MSG_WriteDeltaUsercmd (&buf, oldcmd, cmd);
++#else
+ 			MSG_WriteDeltaUsercmdKey (&buf, key, oldcmd, cmd);
++#endif
+ 			oldcmd = cmd;
+ 		}
+ 	}
+@@ -874,6 +897,12 @@
+ 	Cmd_AddCommand ("-button3", IN_Button3Up);
+ 	Cmd_AddCommand ("+button4", IN_Button4Down);
+ 	Cmd_AddCommand ("-button4", IN_Button4Up);
++#ifdef ELITEFORCE
++	Cmd_AddCommand ("+altattack", IN_Button5Down);
++	Cmd_AddCommand ("-altattack", IN_Button5Up);
++	Cmd_AddCommand ("+use", IN_Button6Down);
++	Cmd_AddCommand ("-use", IN_Button6Up);
++#endif
+ 	Cmd_AddCommand ("+button5", IN_Button5Down);
+ 	Cmd_AddCommand ("-button5", IN_Button5Up);
+ 	Cmd_AddCommand ("+button6", IN_Button6Down);
+Index: code/client/cl_console.c
+===================================================================
+--- code/client/cl_console.c	(revision 716)
++++ code/client/cl_console.c	(working copy)
+@@ -64,7 +64,6 @@
+ 
+ vec4_t	console_color = {1.0, 1.0, 1.0, 1.0};
+ 
+-
+ /*
+ ================
+ Con_ToggleConsole_f
+Index: code/client/snd_codec.c
+===================================================================
+--- code/client/snd_codec.c	(revision 716)
++++ code/client/snd_codec.c	(working copy)
+@@ -100,6 +100,9 @@
+ #if USE_CODEC_VORBIS
+ 	S_CodecRegister(&ogg_codec);
+ #endif
++#if USE_CODEC_MP3
++	S_CodecRegister(&mp3_codec);
++#endif
+ }
+ 
+ /*
+@@ -128,22 +131,111 @@
+ S_CodecLoad
+ =================
+ */
+-void *S_CodecLoad(const char *filename, snd_info_t *info)
++
++#ifdef ELITEFORCE
++qboolean S_EFCheckExtension(char *filename)
+ {
+-	snd_codec_t *codec;
++	fileHandle_t hnd;
+ 	char fn[MAX_QPATH];
++	int stringlen = strlen(filename);
++	char *extptr;
++	
++	strncpy(fn, filename, stringlen+1);
++	extptr = strrchr(fn, '.');
+ 
+-	codec = S_FindCodecForFile(filename);
+-	if(!codec)
++	if(!extptr)
+ 	{
+-		Com_Printf("Unknown extension for %s\n", filename);
+-		return NULL;
++		extptr = &fn[stringlen];
++		
++		extptr[0] = '.';
++		extptr[1] = 'w';
++		extptr[2] = 'a';
++		extptr[3] = 'v';
++		extptr[4] = '\0';
++		
++		stringlen += 4;
+ 	}
++	
++	FS_FOpenFileRead(fn, &hnd, qtrue);
+ 
++	if(!hnd)
++	{
++		if(!strcmp(++extptr, "wav"))
++		{
++			extptr[0] = 'm';
++			extptr[1] = 'p';
++			extptr[2] = '3';
++
++			FS_FOpenFileRead(fn, &hnd, qtrue);
++			
++			if(!hnd)
++				return qfalse;
++		}
++		else
++			return qfalse;
++	}
++	
++	FS_FCloseFile(hnd);
++	strcpy(filename, fn);
++
++	return qtrue;
++}
++
++qboolean S_EFGetFileName(char *filename)
++{
++	char fn[MAX_QPATH];
++	qboolean dschoermen = qfalse;
++
++	if(!Q_stricmp(Cvar_VariableString("s_language"), "DEUTSCH"))
++		dschoermen = qtrue;
++
++	strncpy(fn, filename, sizeof(fn) - 10);
++
++	if(dschoermen && strstr(filename, "sound/voice") == filename)
++	{
++		fn[8] = 'x';
++		fn[9] = '_';
++		fn[10] = 'd';
++	
++		if(S_EFCheckExtension(fn))
++		{
++			strcpy(filename, fn);
++			return qtrue;
++		}
++	}
++
++	if(S_EFCheckExtension(filename))
++		return qtrue;
++	
++	return qfalse;
++}
++#endif
++
++void *S_CodecLoad(const char *filename, snd_info_t *info)
++{
++        snd_codec_t *codec;
++        char fn[MAX_QPATH];
++
++#ifdef ELITEFORCE
+ 	strncpy(fn, filename, sizeof(fn));
+-	COM_DefaultExtension(fn, sizeof(fn), codec->ext);
++	if(!S_EFGetFileName(fn))
++		return NULL;
++        codec = S_FindCodecForFile(fn);
++#else
++        codec = S_FindCodecForFile(filename);
++#endif
++        if(!codec)
++        {
++                Com_Printf("Unknown extension for %s\n", filename);
++                return NULL;
++        }
+ 
+-	return codec->load(fn, info);
++#ifndef ELITEFORCE
++        strncpy(fn, filename, sizeof(fn));
++        COM_DefaultExtension(fn, sizeof(fn), codec->ext);
++#endif
++
++        return codec->load(fn, info);
+ }
+ 
+ /*
+Index: code/client/snd_openal.c
+===================================================================
+--- code/client/snd_openal.c	(revision 716)
++++ code/client/snd_openal.c	(working copy)
+@@ -282,7 +282,12 @@
+ 	data = S_CodecLoad(knownSfx[sfx].filename, &info);
+ 	if(!data)
+ 	{
++#ifdef ELITEFORCE
++		S_AL_BufferUnload(sfx);
++		*knownSfx[sfx].filename = '\0';
++#else
+ 		S_AL_BufferUseDefault(sfx);
++#endif
+ 		return;
+ 	}
+ 
+@@ -377,7 +382,11 @@
+ 	numSfx = 0;
+ 
+ 	// Load the default sound, and lock it
++#ifdef ELITEFORCE
++	default_sfx = S_AL_BufferFind("sound/null.wav");
++#else
+ 	default_sfx = S_AL_BufferFind("sound/feedback/hit.wav");
++#endif
+ 	S_AL_BufferUse(default_sfx);
+ 	knownSfx[default_sfx].isLocked = qtrue;
+ 
+@@ -425,6 +434,12 @@
+ 
+ 	if( s_alPrecache->integer && (!knownSfx[sfx].inMemory) && (!knownSfx[sfx].isDefault))
+ 		S_AL_BufferLoad(sfx);
++
++#ifdef ELITEFORCE
++	if(! *knownSfx[sfx].filename)
++		return 0;
++#endif
++
+ 	knownSfx[sfx].lastUsedTime = Com_Milliseconds();
+ 
+ 	return sfx;
+Index: code/client/client.h
+===================================================================
+--- code/client/client.h	(revision 716)
++++ code/client/client.h	(working copy)
+@@ -203,6 +203,10 @@
+ 	int			timeDemoStart;		// cls.realtime before first frame
+ 	int			timeDemoBaseTime;	// each frame will be at this time + frameNum * 50
+ 
++#ifdef ELITEFORCE
++        qboolean	compat;		// Compatibility mode for old EliteForce servers.
++#endif
++
+ 	// big stuff at end of structure so most offsets are 15 bits or less
+ 	netchan_t	netchan;
+ } clientConnection_t;
+Index: code/client/cl_scrn.c
+===================================================================
+--- code/client/cl_scrn.c	(revision 716)
++++ code/client/cl_scrn.c	(working copy)
+@@ -160,7 +160,7 @@
+ void SCR_DrawSmallChar( int x, int y, int ch ) {
+ 	int row, col;
+ 	float frow, fcol;
+-	float size;
++	float vsize, hsize;
+ 
+ 	ch &= 255;
+ 
+@@ -177,11 +177,16 @@
+ 
+ 	frow = row*0.0625;
+ 	fcol = col*0.0625;
+-	size = 0.0625;
++	vsize = 0.0625;
++#ifdef ELITEFORCE
++	hsize = 0.03125;
++#else
++	hsize = 0.0625;
++#endif
+ 
+ 	re.DrawStretchPic( x, y, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT,
+ 					   fcol, frow, 
+-					   fcol + size, frow + size, 
++					   fcol + hsize, frow + vsize, 
+ 					   cls.charSetShader );
+ }
+ 
+Index: code/client/snd_codec.h
+===================================================================
+--- code/client/snd_codec.h	(revision 716)
++++ code/client/snd_codec.h	(working copy)
+@@ -95,4 +95,13 @@
+ int S_OGG_CodecReadStream(snd_stream_t *stream, int bytes, void *buffer);
+ #endif // USE_CODEC_VORBIS
+ 
++// MP3 codec
++#ifdef USE_CODEC_MP3
++extern snd_codec_t mp3_codec;
++void *S_MP3_CodecLoad(const char *filename, snd_info_t *info);
++snd_stream_t *S_MP3_CodecOpenStream(const char *filename);
++void S_MP3_CodecCloseStream(snd_stream_t *stream);
++int S_MP3_CodecReadStream(snd_stream_t *stream, int bytes, void *buffer);
++#endif // USE_CODEC_MP3
++
+ #endif // !_SND_CODEC_H_
+Index: code/client/cl_parse.c
+===================================================================
+--- code/client/cl_parse.c	(revision 716)
++++ code/client/cl_parse.c	(working copy)
+@@ -207,8 +207,11 @@
+ 
+ 	// get the reliable sequence acknowledge number
+ 	// NOTE: now sent with all server to client messages
+-	//clc.reliableAcknowledge = MSG_ReadLong( msg );
+-
++	#ifdef ELITEFORCE
++	if(msg->compat)
++		clc.reliableAcknowledge = MSG_ReadLong( msg );
++	#endif
++	
+ 	// read in the new snapshot to a temporary buffer
+ 	// we will only copy to cl.snap if it is valid
+ 	Com_Memset (&newSnap, 0, sizeof(newSnap));
+@@ -407,9 +410,12 @@
+ 	while ( 1 ) {
+ 		cmd = MSG_ReadByte( msg );
+ 
+-		if ( cmd == svc_EOF ) {
++		#ifdef ELITEFORCE
++		if((msg->compat && cmd <= 0) || cmd == svc_EOF)
++		#else
++		if ( cmd == svc_EOF )
++		#endif
+ 			break;
+-		}
+ 		
+ 		if ( cmd == svc_configstring ) {
+ 			int		len;
+@@ -442,15 +448,22 @@
+ 		}
+ 	}
+ 
+-	clc.clientNum = MSG_ReadLong(msg);
++	#ifdef ELITEFORCE
++	if(!msg->compat)
++	#endif
++		clc.clientNum = MSG_ReadLong(msg);
++	
+ 	// read the checksum feed
+-	clc.checksumFeed = MSG_ReadLong( msg );
++	#ifdef ELITEFORCE
++	if(!clc.demoplaying || !msg->compat)
++	#endif
++		clc.checksumFeed = MSG_ReadLong( msg );
+ 
+ 	// parse serverId and other cvars
+ 	CL_SystemInfoChanged();
+ 
+ 	// reinitialize the filesystem if the game directory has changed
+-  FS_ConditionalRestart( clc.checksumFeed );
++	FS_ConditionalRestart( clc.checksumFeed );
+ 
+ 	// This used to call CL_StartHunkUsers, but now we enter the download state before loading the
+ 	// cgame
+@@ -596,15 +609,22 @@
+ 		Com_Printf ("------------------\n");
+ 	}
+ 
+-	MSG_Bitstream(msg);
++	#ifdef ELITEFORCE
++	if(!msg->compat)
++	{
++	#endif
++		MSG_Bitstream(msg);
+ 
+-	// get the reliable sequence acknowledge number
+-	clc.reliableAcknowledge = MSG_ReadLong( msg );
+-	// 
+-	if ( clc.reliableAcknowledge < clc.reliableSequence - MAX_RELIABLE_COMMANDS ) {
+-		clc.reliableAcknowledge = clc.reliableSequence;
++		// get the reliable sequence acknowledge number
++		clc.reliableAcknowledge = MSG_ReadLong( msg );
++		// 
++		if ( clc.reliableAcknowledge < clc.reliableSequence - MAX_RELIABLE_COMMANDS ) {
++			clc.reliableAcknowledge = clc.reliableSequence;
++		}
++	#ifdef ELITEFORCE
+ 	}
+-
++	#endif
++	
+ 	//
+ 	// parse the message
+ 	//
+@@ -616,7 +636,12 @@
+ 
+ 		cmd = MSG_ReadByte( msg );
+ 
+-		if ( cmd == svc_EOF) {
++		#ifdef ELITEFORCE
++		if(cmd == svc_EOF || (msg->compat && cmd == -1))
++		#else
++		if ( cmd == svc_EOF)
++		#endif
++		{
+ 			SHOWNET( msg, "END OF MESSAGE" );
+ 			break;
+ 		}
+Index: code/client/cl_keys.c
+===================================================================
+--- code/client/cl_keys.c	(revision 716)
++++ code/client/cl_keys.c	(working copy)
+@@ -1093,13 +1093,14 @@
+ 			return;
+ 		}
+ 
++#ifndef ELITEFORCE
+ 		// escape always gets out of CGAME stuff
+ 		if (cls.keyCatchers & KEYCATCH_CGAME) {
+ 			cls.keyCatchers &= ~KEYCATCH_CGAME;
+ 			VM_Call (cgvm, CG_EVENT_HANDLING, CGAME_EVENT_NONE);
+ 			return;
+ 		}
+-
++#endif
+ 		if ( !( cls.keyCatchers & KEYCATCH_UI ) ) {
+ 			if ( cls.state == CA_ACTIVE && !clc.demoplaying ) {
+ 				VM_Call( uivm, UI_SET_ACTIVE_MENU, UIMENU_INGAME );
+@@ -1111,8 +1112,11 @@
+ 			}
+ 			return;
+ 		}
+-
++#ifdef ELITEFORCE
++		VM_Call( uivm, UI_KEY_EVENT, key );
++#else
+ 		VM_Call( uivm, UI_KEY_EVENT, key, down );
++#endif
+ 		return;
+ 	}
+ 
+@@ -1127,12 +1131,13 @@
+ 
+ 		CL_AddKeyUpCommands( key, kb );
+ 
++#ifndef ELITEFORCE
+ 		if ( cls.keyCatchers & KEYCATCH_UI && uivm ) {
+ 			VM_Call( uivm, UI_KEY_EVENT, key, down );
+ 		} else if ( cls.keyCatchers & KEYCATCH_CGAME && cgvm ) {
+ 			VM_Call( cgvm, CG_KEY_EVENT, key, down );
+ 		} 
+-
++#endif
+ 		return;
+ 	}
+ 
+@@ -1144,10 +1149,12 @@
+ 		if ( uivm ) {
+ 			VM_Call( uivm, UI_KEY_EVENT, key, down );
+ 		} 
++#ifndef ELITEFORCE
+ 	} else if ( cls.keyCatchers & KEYCATCH_CGAME ) {
+ 		if ( cgvm ) {
+ 			VM_Call( cgvm, CG_KEY_EVENT, key, down );
+ 		} 
++#endif
+ 	} else if ( cls.keyCatchers & KEYCATCH_MESSAGE ) {
+ 		Message_Key( key );
+ 	} else if ( cls.state == CA_DISCONNECTED ) {
+Index: code/client/cl_cgame.c
+===================================================================
+--- code/client/cl_cgame.c	(revision 716)
++++ code/client/cl_cgame.c	(working copy)
+@@ -453,17 +453,21 @@
+ 	case CG_FS_FCLOSEFILE:
+ 		FS_FCloseFile( args[1] );
+ 		return 0;
++#ifndef ELITEFORCE
+ 	case CG_FS_SEEK:
+ 		return FS_Seek( args[1], args[2], args[3] );
++#endif
+ 	case CG_SENDCONSOLECOMMAND:
+ 		Cbuf_AddText( VMA(1) );
+ 		return 0;
+ 	case CG_ADDCOMMAND:
+ 		CL_AddCgameCommand( VMA(1) );
+ 		return 0;
++#ifndef ELITEFORCE
+ 	case CG_REMOVECOMMAND:
+ 		Cmd_RemoveCommand( VMA(1) );
+ 		return 0;
++#endif
+ 	case CG_SENDCLIENTCOMMAND:
+ 		CL_AddReliableCommand( VMA(1) );
+ 		return 0;
+@@ -484,8 +488,10 @@
+ 		return CM_InlineModel( args[1] );
+ 	case CG_CM_TEMPBOXMODEL:
+ 		return CM_TempBoxModel( VMA(1), VMA(2), /*int capsule*/ qfalse );
++#ifndef ELITEFORCE
+ 	case CG_CM_TEMPCAPSULEMODEL:
+ 		return CM_TempBoxModel( VMA(1), VMA(2), /*int capsule*/ qtrue );
++#endif
+ 	case CG_CM_POINTCONTENTS:
+ 		return CM_PointContents( VMA(1), args[2] );
+ 	case CG_CM_TRANSFORMEDPOINTCONTENTS:
+@@ -493,15 +499,19 @@
+ 	case CG_CM_BOXTRACE:
+ 		CM_BoxTrace( VMA(1), VMA(2), VMA(3), VMA(4), VMA(5), args[6], args[7], /*int capsule*/ qfalse );
+ 		return 0;
++#ifndef ELITEFORCE
+ 	case CG_CM_CAPSULETRACE:
+ 		CM_BoxTrace( VMA(1), VMA(2), VMA(3), VMA(4), VMA(5), args[6], args[7], /*int capsule*/ qtrue );
+ 		return 0;
++#endif
+ 	case CG_CM_TRANSFORMEDBOXTRACE:
+ 		CM_TransformedBoxTrace( VMA(1), VMA(2), VMA(3), VMA(4), VMA(5), args[6], args[7], VMA(8), VMA(9), /*int capsule*/ qfalse );
+ 		return 0;
++#ifndef ELITEFORCE
+ 	case CG_CM_TRANSFORMEDCAPSULETRACE:
+ 		CM_TransformedBoxTrace( VMA(1), VMA(2), VMA(3), VMA(4), VMA(5), args[6], args[7], VMA(8), VMA(9), /*int capsule*/ qtrue );
+ 		return 0;
++#endif
+ 	case CG_CM_MARKFRAGMENTS:
+ 		return re.MarkFragments( args[1], VMA(2), VMA(3), args[4], VMA(5), args[6], VMA(7) );
+ 	case CG_S_STARTSOUND:
+@@ -516,12 +526,14 @@
+ 	case CG_S_ADDLOOPINGSOUND:
+ 		S_AddLoopingSound( args[1], VMA(2), VMA(3), args[4] );
+ 		return 0;
++#ifndef ELITEFORCE
+ 	case CG_S_ADDREALLOOPINGSOUND:
+ 		S_AddRealLoopingSound( args[1], VMA(2), VMA(3), args[4] );
+ 		return 0;
+ 	case CG_S_STOPLOOPINGSOUND:
+ 		S_StopLoopingSound( args[1] );
+ 		return 0;
++#endif
+ 	case CG_S_UPDATEENTITYPOSITION:
+ 		S_UpdateEntityPosition( args[1], VMA(2) );
+ 		return 0;
+@@ -544,8 +556,10 @@
+ 		return re.RegisterShader( VMA(1) );
+ 	case CG_R_REGISTERSHADERNOMIP:
+ 		return re.RegisterShaderNoMip( VMA(1) );
++#ifndef ELITEFORCE
+ 	case CG_R_REGISTERFONT:
+ 		re.RegisterFont( VMA(1), args[2], VMA(3));
++#endif
+ 	case CG_R_CLEARSCENE:
+ 		re.ClearScene();
+ 		return 0;
+@@ -555,17 +569,21 @@
+ 	case CG_R_ADDPOLYTOSCENE:
+ 		re.AddPolyToScene( args[1], args[2], VMA(3), 1 );
+ 		return 0;
++#ifndef ELITEFORCE
+ 	case CG_R_ADDPOLYSTOSCENE:
+ 		re.AddPolyToScene( args[1], args[2], VMA(3), args[4] );
+ 		return 0;
+ 	case CG_R_LIGHTFORPOINT:
+ 		return re.LightForPoint( VMA(1), VMA(2), VMA(3), VMA(4) );
++#endif
+ 	case CG_R_ADDLIGHTTOSCENE:
+ 		re.AddLightToScene( VMA(1), VMF(2), VMF(3), VMF(4), VMF(5) );
+ 		return 0;
++#ifndef ELITEFORCE
+ 	case CG_R_ADDADDITIVELIGHTTOSCENE:
+ 		re.AddAdditiveLightToScene( VMA(1), VMF(2), VMF(3), VMF(4), VMF(5) );
+ 		return 0;
++#endif
+ 	case CG_R_RENDERSCENE:
+ 		re.RenderScene( VMA(1) );
+ 		return 0;
+@@ -602,6 +620,7 @@
+ 		return 0;
+ 	case CG_MEMORY_REMAINING:
+ 		return Hunk_MemoryRemaining();
++#ifndef ELITEFORCE
+   case CG_KEY_ISDOWN:
+ 		return Key_IsDown( args[1] );
+   case CG_KEY_GETCATCHER:
+@@ -611,9 +630,9 @@
+     return 0;
+   case CG_KEY_GETKEY:
+ 		return Key_GetKey( VMA(1) );
++#endif
+ 
+ 
+-
+ 	case CG_MEMSET:
+ 		Com_Memset( VMA(1), args[2], args[3] );
+ 		return 0;
+@@ -635,9 +654,9 @@
+ 		return FloatAsInt( floor( VMF(1) ) );
+ 	case CG_CEIL:
+ 		return FloatAsInt( ceil( VMF(1) ) );
++#ifndef ELITEFORCE
+ 	case CG_ACOS:
+ 		return FloatAsInt( Q_acos( VMF(1) ) );
+-
+ 	case CG_PC_ADD_GLOBAL_DEFINE:
+ 		return botlib_export->PC_AddGlobalDefine( VMA(1) );
+ 	case CG_PC_LOAD_SOURCE:
+@@ -695,7 +714,12 @@
+ 		return re.GetEntityToken( VMA(1), args[2] );
+ 	case CG_R_INPVS:
+ 		return re.inPVS( VMA(1), VMA(2) );
+-
++#else
++	case CG_R_REGISTERSHADER3D:
++		return re.RegisterShader3D( VMA(1) );
++	case CG_CVAR_SET_NO_MODIFY:
++		return qfalse;
++#endif
+ 	default:
+ 	        assert(0); // bk010102
+ 		Com_Error( ERR_DROP, "Bad cgame system trap: %i", args[0] );
+Index: code/client/cl_ui.c
+===================================================================
+--- code/client/cl_ui.c	(revision 716)
++++ code/client/cl_ui.c	(working copy)
+@@ -88,7 +88,7 @@
+ 	FS_FCloseFile(fileOut);
+ }
+ 
+-
++#ifndef ELITEFORCE
+ /*
+ ====================
+ LAN_ResetPings
+@@ -217,8 +217,8 @@
+ 		}
+ 	}
+ }
++#endif
+ 
+-
+ /*
+ ====================
+ LAN_GetServerCount
+@@ -241,7 +241,6 @@
+ 	}
+ 	return 0;
+ }
+-
+ /*
+ ====================
+ LAN_GetLocalServerAddressString
+@@ -277,6 +276,7 @@
+ 	buf[0] = '\0';
+ }
+ 
++#ifndef ELITEFORCE
+ /*
+ ====================
+ LAN_GetServerInfo
+@@ -395,7 +395,6 @@
+ 	}
+ 	return NULL;
+ }
+-
+ /*
+ ====================
+ LAN_CompareServers
+@@ -465,6 +464,8 @@
+ 	return res;
+ }
+ 
++#endif
++
+ /*
+ ====================
+ LAN_GetPingQueueCount
+@@ -501,6 +502,7 @@
+ 	CL_GetPingInfo( n, buf, buflen );
+ }
+ 
++#ifndef ELITEFORCE
+ /*
+ ====================
+ LAN_MarkServerVisible
+@@ -589,6 +591,8 @@
+ 	return qfalse;
+ }
+ 
++#endif
++
+ /*
+ =======================
+ LAN_UpdateVisiblePings
+@@ -680,7 +684,7 @@
+ 	cls.keyCatchers = catcher;
+ }
+ 
+-
++#ifndef ELITEFORCE
+ /*
+ ====================
+ CLUI_GetCDKey
+@@ -697,8 +701,8 @@
+ 		buf[16] = 0;
+ 	}
+ }
++#endif
+ 
+-
+ /*
+ ====================
+ CLUI_SetCDKey
+@@ -713,7 +717,12 @@
+ 		// set the flag so the fle will be written at the next opportunity
+ 		cvar_modifiedFlags |= CVAR_ARCHIVE;
+ 	} else {
++		#ifdef ELITEFORCE
++		Com_Memcpy(cl_cdkey, buf, 22);
++		cl_cdkey[22] = '\0';
++		#else
+ 		Com_Memcpy( cl_cdkey, buf, 16 );
++		#endif
+ 		// set the flag so the fle will be written at the next opportunity
+ 		cvar_modifiedFlags |= CVAR_ARCHIVE;
+ 	}
+@@ -841,8 +850,10 @@
+ 	case UI_FS_GETFILELIST:
+ 		return FS_GetFileList( VMA(1), VMA(2), VMA(3), args[4] );
+ 
++#ifndef ELITEFORCE
+ 	case UI_FS_SEEK:
+ 		return FS_Seek( args[1], args[2], args[3] );
++#endif
+ 	
+ 	case UI_R_REGISTERMODEL:
+ 		return re.RegisterModel( VMA(1) );
+@@ -948,6 +959,7 @@
+ 	case UI_GETCONFIGSTRING:
+ 		return GetConfigString( args[1], VMA(2), args[3] );
+ 
++#ifndef ELITEFORCE
+ 	case UI_LAN_LOADCACHEDSERVERS:
+ 		LAN_LoadCachedServers();
+ 		return 0;
+@@ -962,6 +974,7 @@
+ 	case UI_LAN_REMOVESERVER:
+ 		LAN_RemoveServer(args[1], VMA(2));
+ 		return 0;
++#endif
+ 
+ 	case UI_LAN_GETPINGQUEUECOUNT:
+ 		return LAN_GetPingQueueCount();
+@@ -978,13 +991,26 @@
+ 		LAN_GetPingInfo( args[1], VMA(2), args[3] );
+ 		return 0;
+ 
++#ifdef ELITEFORCE
++	case UI_LAN_GETLOCALSERVERCOUNT:
++		return LAN_GetServerCount(AS_LOCAL);
++
++	case UI_LAN_GETLOCALSERVERADDRESSSTRING:
++		LAN_GetServerAddressString( AS_LOCAL, args[1], VMA(2), args[3] );
++		return 0;
++	case UI_LAN_GETGLOBALSERVERCOUNT:
++		return LAN_GetServerCount(AS_GLOBAL);
++
++	case UI_LAN_GETGLOBALSERVERADDRESSSTRING:
++		LAN_GetServerAddressString( AS_GLOBAL, args[1], VMA(2), args[3] );
++		return 0;
++#else
+ 	case UI_LAN_GETSERVERCOUNT:
+ 		return LAN_GetServerCount(args[1]);
+ 
+ 	case UI_LAN_GETSERVERADDRESSSTRING:
+ 		LAN_GetServerAddressString( args[1], args[2], VMA(3), args[4] );
+ 		return 0;
+-
+ 	case UI_LAN_GETSERVERINFO:
+ 		LAN_GetServerInfo( args[1], args[2], VMA(3), args[4] );
+ 		return 0;
+@@ -1011,24 +1037,33 @@
+ 
+ 	case UI_LAN_COMPARESERVERS:
+ 		return LAN_CompareServers( args[1], args[2], args[3], args[4], args[5] );
++#endif
+ 
+ 	case UI_MEMORY_REMAINING:
+ 		return Hunk_MemoryRemaining();
+ 
++#ifndef ELITEFORCE
+ 	case UI_GET_CDKEY:
+ 		CLUI_GetCDKey( VMA(1), args[2] );
+ 		return 0;
++#endif
+ 
+ 	case UI_SET_CDKEY:
+ 		CLUI_SetCDKey( VMA(1) );
++#ifdef ELITEFORCE
++		return qtrue;
++#else
+ 		return 0;
++#endif
+ 	
++#ifndef ELITEFORCE
+ 	case UI_SET_PBCLSTATUS:
+ 		return 0;	
+ 
+ 	case UI_R_REGISTERFONT:
+ 		re.RegisterFont( VMA(1), args[2], VMA(3));
+ 		return 0;
++#endif
+ 
+ 	case UI_MEMSET:
+ 		Com_Memset( VMA(1), args[2], args[3] );
+@@ -1060,6 +1095,7 @@
+ 	case UI_CEIL:
+ 		return FloatAsInt( ceil( VMF(1) ) );
+ 
++#ifndef ELITEFORCE
+ 	case UI_PC_ADD_GLOBAL_DEFINE:
+ 		return botlib_export->PC_AddGlobalDefine( VMA(1) );
+ 	case UI_PC_LOAD_SOURCE:
+@@ -1105,8 +1141,8 @@
+ 
+ 	case UI_VERIFY_CDKEY:
+ 		return CL_CDKeyValidate(VMA(1), VMA(2));
++#endif
+ 
+-
+ 		
+ 	default:
+ 		Com_Error( ERR_DROP, "Bad UI system trap: %i", args[0] );
+@@ -1162,6 +1198,10 @@
+ //		Com_Printf(S_COLOR_YELLOW "WARNING: loading old Quake III Arena User Interface version %d\n", v );
+ 		// init for this gamestate
+ 		VM_Call( uivm, UI_INIT, (cls.state >= CA_AUTHORIZING && cls.state < CA_ACTIVE));
++
++		#ifdef ELITEFORCE
++		Cvar_SetValue("ui_cdkeychecked2", 1);
++		#endif
+ 	}
+ 	else if (v != UI_API_VERSION) {
+ 		Com_Error( ERR_DROP, "User Interface is version %d, expected %d", v, UI_API_VERSION );
+@@ -1170,15 +1210,23 @@
+ 	else {
+ 		// init for this gamestate
+ 		VM_Call( uivm, UI_INIT, (cls.state >= CA_AUTHORIZING && cls.state < CA_ACTIVE) );
++
++		#ifdef ELITEFORCE
++		Cvar_SetValue("ui_cdkeychecked2", 1);
++		#endif
+ 	}
+ }
+ 
+ qboolean UI_usesUniqueCDKey( void ) {
++#ifdef ELITEFORCE
++	return qfalse;
++#else
+ 	if (uivm) {
+ 		return (VM_Call( uivm, UI_HASUNIQUECDKEY) == qtrue);
+ 	} else {
+ 		return qfalse;
+ 	}
++#endif
+ }
+ 
+ /*
+Index: code/client/cl_net_chan.c
+===================================================================
+--- code/client/cl_net_chan.c	(revision 716)
++++ code/client/cl_net_chan.c	(working copy)
+@@ -35,6 +35,8 @@
+ 
+ ==============
+ */
++
++#ifndef ELITEFORCE
+ static void CL_Netchan_Encode( msg_t *msg ) {
+ 	int serverId, messageAcknowledge, reliableAcknowledge;
+ 	int i, index, srdc, sbit, soob;
+@@ -79,6 +81,7 @@
+ 		*(msg->data + i) = (*(msg->data + i)) ^ key;
+ 	}
+ }
++#endif
+ 
+ /*
+ ==============
+@@ -89,6 +92,8 @@
+ 
+ ==============
+ */
++
++#ifndef ELITEFORCE
+ static void CL_Netchan_Decode( msg_t *msg ) {
+ 	long reliableAcknowledge, i, index;
+ 	byte key, *string;
+@@ -125,6 +130,7 @@
+ 		*(msg->data + i) = *(msg->data + i) ^ key;
+ 	}
+ }
++#endif
+ 
+ /*
+ =================
+@@ -141,9 +147,14 @@
+ ================
+ */
+ void CL_Netchan_Transmit( netchan_t *chan, msg_t* msg ) {
+-	MSG_WriteByte( msg, clc_EOF );
++#ifdef ELITEFORCE
++	if(!chan->compat)
++#endif
++		MSG_WriteByte( msg, clc_EOF );
+ 
++#ifndef ELITEFORCE
+ 	CL_Netchan_Encode( msg );
++#endif
+ 	Netchan_Transmit( chan, msg->cursize, msg->data );
+ }
+ 
+@@ -161,7 +172,9 @@
+ 	ret = Netchan_Process( chan, msg );
+ 	if (!ret)
+ 		return qfalse;
++#ifndef ELITEFORCE
+ 	CL_Netchan_Decode( msg );
++#endif
+ 	newsize += msg->cursize;
+ 	return qtrue;
+ }
+Index: Makefile
+===================================================================
+--- Makefile	(revision 716)
++++ Makefile	(working copy)
+@@ -104,6 +104,10 @@
+ USE_CODEC_VORBIS=0
+ endif
+ 
++ifndef USE_CODEC_MP3
++USE_CODEC_MP3=0
++endif
++
+ ifndef USE_LOCAL_HEADERS
+ USE_LOCAL_HEADERS=1
+ endif
+@@ -186,6 +190,10 @@
+     BASE_CFLAGS += -DUSE_CODEC_VORBIS=1
+   endif
+ 
++  ifeq ($(USE_CODEC_MP3),1)
++    BASE_CFLAGS += -DUSE_CODEC_MP3=1
++  endif
++
+   ifeq ($(USE_SDL),1)
+     BASE_CFLAGS += -DUSE_SDL_VIDEO=1 -DUSE_SDL_SOUND=1 $(shell sdl-config --cflags)
+     GL_CFLAGS =
+@@ -221,7 +229,7 @@
+     BASE_CFLAGS += -DNO_VM_COMPILED
+   endif
+ 
+-  DEBUG_CFLAGS = $(BASE_CFLAGS) -g -O0
++  DEBUG_CFLAGS = $(BASE_CFLAGS) -g3 -ggdb3
+ 
+   RELEASE_CFLAGS=$(BASE_CFLAGS) -DNDEBUG $(OPTIMIZE)
+ 
+@@ -248,6 +256,10 @@
+     CLIENT_LDFLAGS += -lvorbisfile -lvorbis -logg
+   endif
+ 
++  ifeq ($(USE_CODEC_MP3),1)
++    CLIENT_LDFLAGS += -lmad
++  endif
++
+   ifeq ($(ARCH),i386)
+     # linux32 make ...
+     BASE_CFLAGS += -m32
+@@ -283,6 +295,10 @@
+     BASE_CFLAGS += -DUSE_CODEC_VORBIS=1
+   endif
+ 
++  ifeq ($(USE_CODEC_MP3),1)
++    BASE_CFLAGS += -DUSE_CODEC_MP3=1
++  endif
++
+   ifeq ($(USE_SDL),1)
+     BASE_CFLAGS += -DUSE_SDL_VIDEO=1 -DUSE_SDL_SOUND=1 -D_THREAD_SAFE=1 -I$(SDLHDIR)/include
+     GL_CFLAGS =
+@@ -343,6 +359,10 @@
+     CLIENT_LDFLAGS += -lvorbisfile -lvorbis -logg
+   endif
+ 
++  ifeq ($(USE_CODEC_MP3),1)
++    CLIENT_LDFLAGS += -lmad
++  endif
++
+ else # ifeq darwin
+ 
+ 
+@@ -367,6 +387,10 @@
+     BASE_CFLAGS += -DUSE_CODEC_VORBIS=1
+   endif
+ 
++  ifeq ($(USE_CODEC_MP3),1)
++    BASE_CFLAGS += -DUSE_CODEC_MP3=1
++  endif
++
+   GL_CFLAGS =
+   MINGW_CFLAGS = -DDONT_TYPEDEF_INT32
+ 
+@@ -390,6 +414,10 @@
+     CLIENT_LDFLAGS += -lvorbisfile -lvorbis -logg
+   endif
+ 
++  ifeq ($(USE_CODEC_MP3),1)
++    CLIENT_LDFLAGS += -lmad
++  endif
++
+   ifeq ($(ARCH),x86)
+     # build 32bit
+     BASE_CFLAGS += -m32
+@@ -431,6 +459,10 @@
+     BASE_CFLAGS += -DUSE_CODEC_VORBIS=1
+   endif
+ 
++  ifeq ($(USE_CODEC_MP3),1)
++    BASE_CFLAGS += -DUSE_CODEC_MP3=1
++  endif
++
+   ifeq ($(USE_SDL),1)
+     BASE_CFLAGS += $(shell sdl11-config --cflags) -DUSE_SDL_VIDEO=1 -DUSE_SDL_SOUND=1
+   endif
+@@ -478,6 +510,9 @@
+     CLIENT_LDFLAGS += -lvorbisfile -lvorbis -logg
+   endif
+ 
++  ifeq ($(USE_CODEC_MP3),1)
++    CLIENT_LDFLAGS += -lmad
++  endif
+ 
+ else # ifeq freebsd
+ 
+@@ -702,6 +737,9 @@
+ debug: build_debug
+ release: build_release
+ 
++eliteforce: build_eliteforce
++eliteforce-debug: build_eliteforce-debug
++
+ build_debug: B=$(BD)
+ build_debug: makedirs tools
+ 	$(MAKE)  targets B=$(BD) CFLAGS="$(CFLAGS) $(DEBUG_CFLAGS) $(DEPEND_CFLAGS)"
+@@ -710,6 +748,14 @@
+ build_release: makedirs tools
+ 	$(MAKE)  targets B=$(BR) CFLAGS="$(CFLAGS) $(RELEASE_CFLAGS) $(DEPEND_CFLAGS)"
+ 
++build_eliteforce: B=$(BR)
++build_eliteforce: makedirs tools
++	$(MAKE)  targets B=$(BR) CFLAGS="-DELITEFORCE $(CFLAGS) $(RELEASE_CFLAGS) $(DEPEND_CFLAGS)"
++
++build_eliteforce-debug: B=$(BD)
++build_eliteforce-debug: makedirs tools
++	$(MAKE)  targets B=$(BD) CFLAGS="$(CFLAGS) $(DEBUG_CFLAGS) $(DEPEND_CFLAGS) -DELITEFORCE"
++
+ #Build both debug and release builds
+ all:build_debug build_release
+ 
+@@ -793,6 +839,7 @@
+   $(B)/client/snd_codec.o \
+   $(B)/client/snd_codec_wav.o \
+   $(B)/client/snd_codec_ogg.o \
++  $(B)/client/snd_codec_mp3.o \
+   \
+   $(B)/client/qal.o \
+   $(B)/client/snd_openal.o \
+@@ -1006,6 +1053,7 @@
+ $(B)/client/snd_codec.o : $(CDIR)/snd_codec.c; $(DO_CC)
+ $(B)/client/snd_codec_wav.o : $(CDIR)/snd_codec_wav.c; $(DO_CC)
+ $(B)/client/snd_codec_ogg.o : $(CDIR)/snd_codec_ogg.c; $(DO_CC)
++$(B)/client/snd_codec_mp3.o : $(CDIR)/snd_codec_mp3.c; $(DO_CC)
+ 
+ $(B)/client/qal.o : $(CDIR)/qal.c; $(DO_CC)
+ $(B)/client/snd_openal.o : $(CDIR)/snd_openal.c; $(DO_CC)
+@@ -1740,4 +1788,4 @@
+   include $(D_FILES)
+ endif
+ 
+-.PHONY: release debug clean distclean copyfiles installer dist
++.PHONY: release debug eliteforce eliteforce-debug clean distclean copyfiles installer dist
+Index: README
+===================================================================
+--- README	(revision 716)
++++ README	(working copy)
+@@ -82,6 +82,7 @@
+   USE_OPENAL        - use OpenAL where available
+   USE_OPENAL_DLOPEN - link with OpenAL at runtime
+   USE_CODEC_VORBIS  - enable Ogg Vorbis support
++  USE_CODEC_MP3     - enable MP3 support. Requires libmad to be installed.
+   USE_LOCAL_HEADERS - use headers local to ioq3 instead of system ones
+   USE_CCACHE        - use ccache compiler caching tool
+   COPYDIR           - the target installation directory
