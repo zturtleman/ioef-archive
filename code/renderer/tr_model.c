@@ -958,7 +958,7 @@ static md3Tag_t *R_GetTag( md3Header_t *mod, int frame, const char *tagName ) {
 #ifdef RAVENMD4
 void R_GetAnimTag( mdrHeader_t *mod, int framenum, const char *tagName, md3Tag_t * dest) 
 {
-	int				i;
+	int				i, j, k;
 	int				frameSize;
 	mdrFrame_t		*frame;
 	mdrTag_t		*tag;
@@ -980,20 +980,13 @@ void R_GetAnimTag( mdrHeader_t *mod, int framenum, const char *tagName, md3Tag_t
 			//
 			frameSize = (long)( &((mdrFrame_t *)0)->bones[ mod->numBones ] );
 			frame = (mdrFrame_t *)((byte *)mod + mod->ofsFrames + framenum * frameSize );
-	#if 1
-			VectorCopy(&frame->bones[tag->boneIndex].matrix[0][0], dest->axis[0] );
-			VectorCopy(&frame->bones[tag->boneIndex].matrix[1][0], dest->axis[1] );
-			VectorCopy(&frame->bones[tag->boneIndex].matrix[2][0], dest->axis[2] );
-	#else
+
+			for (j = 0; j < 3; j++)
 			{
-				int j,k;
-				for (j=0;j<3;j++)
-				{
-					for (k=0;k<3;k++)
-						dest->axis[j][k]=frame->bones[tag->boneIndex].matrix[k][j];
-				}
+				for (k = 0; k < 3; k++)
+					dest->axis[j][k]=frame->bones[tag->boneIndex].matrix[k][j];
 			}
-	#endif
+
 			dest->origin[0]=frame->bones[tag->boneIndex].matrix[0][3];
 			dest->origin[1]=frame->bones[tag->boneIndex].matrix[1][3];
 			dest->origin[2]=frame->bones[tag->boneIndex].matrix[2][3];				
@@ -1015,10 +1008,7 @@ R_LerpTag
 */
 int R_LerpTag( orientation_t *tag, qhandle_t handle, int startFrame, int endFrame, 
 					 float frac, const char *tagName ) {
-	md3Tag_t	*start, *end;
-#ifdef RAVENMD4
-	md3Tag_t	start_space, end_space;
-#endif
+	md3Tag_t	*start, start_space, *end, end_space;
 	int		i;
 	float		frontLerp, backLerp;
 	model_t		*model;

@@ -94,7 +94,7 @@ void Netchan_Setup( netsrc_t sock, netchan_t *chan, netadr_t adr, int qport ) {
 }
 
 // TTimo: unused, commenting out to make gcc happy
-#if 0
+#ifdef ELITEFORCE
 /*
 ==============
 Netchan_ScramblePacket
@@ -109,7 +109,7 @@ static void Netchan_ScramblePacket( msg_t *buf ) {
 	int			i, j, c, mask, temp;
 	int			seq[MAX_PACKETLEN];
 
-	seed = ( LittleLong( *(unsigned *)buf->data ) * 3 ) ^ ( buf->cursize * 123 );
+	seed = ( LittleLong( *(unsigned *)buf->data ) * 3 ) ^ ( buf->cursize * 123 ) ^ 0x87243987;
 	c = buf->cursize;
 	if ( c <= SCRAMBLE_START ) {
 		return;
@@ -120,8 +120,13 @@ static void Netchan_ScramblePacket( msg_t *buf ) {
 
 	// generate a sequence of "random" numbers
 	for (i = 0 ; i < c ; i++) {
-		seed = (119 * seed + 1);
+		seed = (69069 * seed + 1);
 		seq[i] = seed;
+	}
+
+	// byte xor the data after the header
+	for (i = SCRAMBLE_START ; i < c ; i++) {
+		buf->data[i] ^= seq[i];
 	}
 
 	// transpose each character
@@ -136,9 +141,9 @@ static void Netchan_ScramblePacket( msg_t *buf ) {
 	}
 
 	// byte xor the data after the header
-	for (i = SCRAMBLE_START ; i < c ; i++) {
-		buf->data[i] ^= seq[i];
-	}
+//	for (i = SCRAMBLE_START ; i < c ; i++) {
+//		buf->data[i] ^= seq[i];
+//	}
 }
 
 static void Netchan_UnScramblePacket( msg_t *buf ) {
@@ -146,7 +151,7 @@ static void Netchan_UnScramblePacket( msg_t *buf ) {
 	int			i, j, c, mask, temp;
 	int			seq[MAX_PACKETLEN];
 
-	seed = ( LittleLong( *(unsigned *)buf->data ) * 3 ) ^ ( buf->cursize * 123 );
+	seed = ( LittleLong( *(unsigned *)buf->data ) * 3 ) ^ ( buf->cursize * 123 ) ^ 0x87243987;
 	c = buf->cursize;
 	if ( c <= SCRAMBLE_START ) {
 		return;
@@ -157,14 +162,14 @@ static void Netchan_UnScramblePacket( msg_t *buf ) {
 
 	// generate a sequence of "random" numbers
 	for (i = 0 ; i < c ; i++) {
-		seed = (119 * seed + 1);
+		seed = (69069 * seed + 1);
 		seq[i] = seed;
 	}
 
 	// byte xor the data after the header
-	for (i = SCRAMBLE_START ; i < c ; i++) {
-		buf->data[i] ^= seq[i];
-	}
+//	for (i = SCRAMBLE_START ; i < c ; i++) {
+//		buf->data[i] ^= seq[i];
+//	}
 
 	// transpose each character in reverse order
 	for ( mask = 1 ; mask < c-SCRAMBLE_START ; mask = ( mask << 1 ) + 1 ) {
@@ -175,6 +180,12 @@ static void Netchan_UnScramblePacket( msg_t *buf ) {
 		temp = buf->data[j];
 		buf->data[j] = buf->data[i];
 		buf->data[i] = temp;
+	}
+
+
+	// byte xor the data after the header
+	for (i = SCRAMBLE_START ; i < c ; i++) {
+		buf->data[i] ^= seq[i];
 	}
 }
 #endif
@@ -210,6 +221,14 @@ void Netchan_TransmitNextFragment( netchan_t *chan ) {
 	MSG_WriteShort( &send, chan->unsentFragmentStart );
 	MSG_WriteShort( &send, fragmentLength );
 	MSG_WriteData( &send, chan->unsentBuffer + chan->unsentFragmentStart, fragmentLength );
+
+	#ifdef ELITEFORCE
+	if(chan->compat)
+	{
+		// the original eliteforce uses the old scrambling routines only slightly modified.	
+		Netchan_ScramblePacket( &send );
+	}
+	#endif
 
 	// send the datagram
 	NET_SendPacket( chan->sock, send.cursize, send.data, chan->remoteAddress );
@@ -277,6 +296,14 @@ void Netchan_Transmit( netchan_t *chan, int length, const byte *data ) {
 
 	MSG_WriteData( &send, data, length );
 
+	#ifdef ELITEFORCE
+	if(chan->compat)
+	{
+		// the original eliteforce uses the old scrambling routines only slightly modified.	
+		Netchan_ScramblePacket( &send );
+	}
+	#endif
+
 	// send the datagram
 	NET_SendPacket( chan->sock, send.cursize, send.data, chan->remoteAddress );
 
@@ -308,7 +335,10 @@ qboolean Netchan_Process( netchan_t *chan, msg_t *msg ) {
 	qboolean	fragmented;
 
 	// XOR unscramble all data in the packet after the header
-//	Netchan_UnScramblePacket( msg );
+#ifdef ELITEFORCE
+	if(chan->compat)
+		Netchan_UnScramblePacket( msg );
+#endif
 
 	// get sequence numbers		
 	MSG_BeginReadingOOB( msg );
@@ -445,7 +475,10 @@ qboolean Netchan_Process( netchan_t *chan, msg_t *msg ) {
 
 		// TTimo
 		// clients were not acking fragmented messages
-		chan->incomingSequence = sequence;
+		#ifdef ELITEFORCE
+		if(!chan->compat)
+		#endif
+			chan->incomingSequence = sequence;
 		
 		return qtrue;
 	}

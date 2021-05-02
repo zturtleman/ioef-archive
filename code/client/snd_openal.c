@@ -282,7 +282,12 @@ static void S_AL_BufferLoad(sfxHandle_t sfx)
 	data = S_CodecLoad(knownSfx[sfx].filename, &info);
 	if(!data)
 	{
+#ifdef ELITEFORCE
+		S_AL_BufferUnload(sfx);
+		*knownSfx[sfx].filename = '\0';
+#else
 		S_AL_BufferUseDefault(sfx);
+#endif
 		return;
 	}
 
@@ -425,6 +430,12 @@ sfxHandle_t S_AL_RegisterSound( const char *sample, qboolean compressed )
 
 	if( s_alPrecache->integer && (!knownSfx[sfx].inMemory) && (!knownSfx[sfx].isDefault))
 		S_AL_BufferLoad(sfx);
+
+#ifdef ELITEFORCE
+	if(! *knownSfx[sfx].filename)
+		return 0;
+#endif
+
 	knownSfx[sfx].lastUsedTime = Com_Milliseconds();
 
 	return sfx;

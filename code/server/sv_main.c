@@ -220,7 +220,11 @@ but not on every player enter or exit.
 ================
 */
 #define	HEARTBEAT_MSEC	300*1000
+#ifdef ELITEFORCE
+#define HEARTBEAT_GAME "STEF1"
+#else
 #define	HEARTBEAT_GAME	"QuakeArena-1"
+#endif
 void SV_MasterHeartbeat( void ) {
 	static netadr_t	adr[MAX_MASTER_SERVERS];
 	int			i;
@@ -258,7 +262,7 @@ void SV_MasterHeartbeat( void ) {
 				sv_master[i]->modified = qfalse;
 				continue;
 			}
-			if ( !strstr( ":", sv_master[i]->string ) ) {
+			if ( !strchr( sv_master[i]->string, ':' ) ) {
 				adr[i].port = BigShort( PORT_MASTER );
 			}
 			Com_Printf( "%s resolved to %i.%i.%i.%i:%i\n", sv_master[i]->string,
@@ -270,7 +274,12 @@ void SV_MasterHeartbeat( void ) {
 		Com_Printf ("Sending heartbeat to %s\n", sv_master[i]->string );
 		// this command should be changed if the server info / status format
 		// ever incompatably changes
+		#ifdef ELITEFORCE
+		NET_OutOfBandPrint(NS_SERVER, adr[i], "\\heartbeat\\%d\\gamename\\%s\\",
+				   Cvar_VariableIntegerValue("net_port"),  HEARTBEAT_GAME);
+		#else
 		NET_OutOfBandPrint( NS_SERVER, adr[i], "heartbeat %s\n", HEARTBEAT_GAME );
+		#endif
 	}
 }
 
@@ -523,9 +532,11 @@ void SV_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 	MSG_BeginReadingOOB( msg );
 	MSG_ReadLong( msg );		// skip the -1 marker
 
+#ifndef ELITEFORCE
 	if (!Q_strncmp("connect", (char *) &msg->data[4], 7)) {
 		Huff_Decompress(msg, 12);
 	}
+#endif
 
 	s = MSG_ReadStringLine( msg );
 	Cmd_TokenizeString( s );
@@ -600,6 +611,10 @@ void SV_PacketEvent( netadr_t from, msg_t *msg ) {
 			Com_Printf( "SV_PacketEvent: fixing up a translated port\n" );
 			cl->netchan.remoteAddress.port = from.port;
 		}
+
+		#ifdef ELITEFORCE
+		msg->compat = cl->compat;
+		#endif
 
 		// make sure it is a valid, in sequence packet
 		if (SV_Netchan_Process(cl, msg)) {

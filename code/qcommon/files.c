@@ -2864,6 +2864,7 @@ Q3 media pak0.pk3, you'll want to remove this function
 */
 static void FS_CheckPak0( void )
 {
+#ifndef ELITEFORCE
 	searchpath_t	*path;
 	qboolean			foundPak0 = qfalse;
 
@@ -2898,6 +2899,7 @@ static void FS_CheckPak0( void )
 				"executable is in the correct place and that every file\n"
 				"in the baseq3 directory is present and readable." );
 	}
+#endif
 }
 
 /*
