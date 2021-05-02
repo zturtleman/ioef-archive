@@ -54,6 +54,13 @@ long myftol( float f );
 #define MAX_STATES_PER_SHADER 32
 #define MAX_STATE_NAME 32
 
+// temporary fix for the skybox black-lines bug
+#ifdef WIN32 
+	#ifndef GL_VERSION_1_2 
+		#define GL_CLAMP_TO_EDGE                  0x812F 
+	#endif 
+#endif
+
 // can't be increased without changing bit packing for drawsurfs
 
 
@@ -149,7 +156,8 @@ typedef enum {
 	GF_SAWTOOTH, 
 	GF_INVERSE_SAWTOOTH, 
 
-	GF_NOISE
+	GF_NOISE,
+	GF_RANDOM
 
 } genFunc_t;
 
@@ -962,6 +970,7 @@ typedef struct {
 	float					triangleTable[FUNCTABLE_SIZE];
 	float					sawToothTable[FUNCTABLE_SIZE];
 	float					inverseSawToothTable[FUNCTABLE_SIZE];
+	float                                   noiseTable[FUNCTABLE_SIZE];
 	float					fogTable[FOG_TABLE_SIZE];
 } trGlobals_t;
 
@@ -1099,6 +1108,7 @@ extern	cvar_t	*r_GLlibCoolDownMsec;
 //====================================================================
 
 float R_NoiseGet4f( float x, float y, float z, float t );
+int R_RandomOn( float t );
 void  R_NoiseInit( void );
 
 void R_SwapBuffers( int );
@@ -1226,6 +1236,9 @@ const void *RB_TakeVideoFrameCmd( const void *data );
 qhandle_t		 RE_RegisterShaderLightMap( const char *name, int lightmapIndex );
 qhandle_t		 RE_RegisterShader( const char *name );
 qhandle_t		 RE_RegisterShaderNoMip( const char *name );
+#ifdef ELITEFORCE
+qhandle_t		 RE_RegisterShader3D( const char *name );
+#endif
 qhandle_t RE_RegisterShaderFromImage(const char *name, int lightmapIndex, image_t *image, qboolean mipRawImage);
 
 shader_t	*R_FindShader( const char *name, int lightmapIndex, qboolean mipRawImage );

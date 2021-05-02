@@ -23,6 +23,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #ifndef _QCOMMON_H_
 #define _QCOMMON_H_
 
+#if defined(ELITEFORCE) && defined(MISSIONPACK)
+	#undef MISSIONPACK
+#endif
+
 #include "../qcommon/cm_public.h"
 
 //Ignore __attribute__ on non-gcc platforms
@@ -43,6 +47,9 @@ typedef struct {
 	qboolean	allowoverflow;	// if false, do a Com_Error
 	qboolean	overflowed;		// set to true if the buffer size failed (with allowoverflow set)
 	qboolean	oob;			// set to true if the buffer size failed (with allowoverflow set)
+#ifdef ELITEFORCE
+	qboolean	compat;		// Compatibility mode for old EliteForce servers.
+#endif
 	byte	*data;
 	int		maxsize;
 	int		cursize;
@@ -207,6 +214,10 @@ typedef struct {
 	int			unsentFragmentStart;
 	int			unsentLength;
 	byte		unsentBuffer[MAX_MSGLEN];
+
+#ifdef ELITEFORCE
+	qboolean	compat;
+#endif
 } netchan_t;
 
 void Netchan_Init( int qport );
@@ -226,20 +237,40 @@ PROTOCOL
 ==============================================================
 */
 
+#ifdef ELITEFORCE
+#define EFPROTOCOL_VERSION	24
+#define PROTOCOL_VERSION	25
+#else
 #define	PROTOCOL_VERSION	68
+#endif
 // 1.31 - 67
 
 // maintain a list of compatible protocols for demo playing
 // NOTE: that stuff only works with two digits protocols
 extern int demo_protocols[];
 
-#define	UPDATE_SERVER_NAME	"update.quake3arena.com"
 // override on command line, config files etc.
-#ifndef MASTER_SERVER_NAME
-#define MASTER_SERVER_NAME	"master.quake3arena.com"
-#endif
-#ifndef AUTHORIZE_SERVER_NAME
-#define	AUTHORIZE_SERVER_NAME	"authorize.quake3arena.com"
+#ifdef ELITEFORCE
+  
+  #define	UPDATE_SERVER_NAME	"motd.stef1.ravensoft.com"
+  #ifndef MASTER_SERVER_NAME
+  #define MASTER_SERVER_NAME	"master.stef1.ravensoft.com:27953"
+  #endif
+  #define MASTER_SERVER2_NAME   "master.gamespy.com:27900"
+  #ifndef AUTHORIZE_SERVER_NAME
+  #define	AUTHORIZE_SERVER_NAME	"authenticate.stef1.ravensoft.com"
+  #endif
+
+#else
+
+  #define	UPDATE_SERVER_NAME	"update.quake3arena.com"
+  #ifndef MASTER_SERVER_NAME
+  #define MASTER_SERVER_NAME	"master.quake3arena.com"
+  #endif
+  #ifndef AUTHORIZE_SERVER_NAME
+  #define	AUTHORIZE_SERVER_NAME	"authorize.quake3arena.com"
+  #endif
+
 #endif
 
 #define	PORT_MASTER			27950
@@ -535,7 +566,11 @@ issues.
 
 #define	MAX_FILE_HANDLES	64
 
+#ifdef ELITEFORCE
+#define BASEGAME "baseEF"
+#else
 #define BASEGAME "baseq3"
+#endif
 
 qboolean FS_Initialized( void );
 

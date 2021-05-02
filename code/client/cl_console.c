@@ -64,7 +64,6 @@ cvar_t		*con_notifytime;
 
 vec4_t	console_color = {1.0, 1.0, 1.0, 1.0};
 
-
 /*
 ================
 Con_ToggleConsole_f

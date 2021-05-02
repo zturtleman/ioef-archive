@@ -2822,7 +2822,12 @@ static void FS_Startup( const char *gameName ) {
 		}
 	}
 
+#ifdef ELITEFORCE
+	Com_ReadCDKey( BASEGAME );
+#else
 	Com_ReadCDKey( "baseq3" );
+#endif
+
 	fs = Cvar_Get ("fs_game", "", CVAR_INIT|CVAR_SYSTEMINFO );
 	if (fs && fs->string[0] != 0) {
 		Com_AppendCDKey( fs->string );
@@ -2864,6 +2869,7 @@ Q3 media pak0.pk3, you'll want to remove this function
 */
 static void FS_CheckPak0( void )
 {
+#ifndef ELITEFORCE
 	searchpath_t	*path;
 	qboolean			foundPak0 = qfalse;
 
@@ -2898,6 +2904,7 @@ static void FS_CheckPak0( void )
 				"executable is in the correct place and that every file\n"
 				"in the baseq3 directory is present and readable." );
 	}
+#endif
 }
 
 /*
@@ -3329,7 +3336,11 @@ void FS_Restart( int checksumFeed ) {
 	if ( Q_stricmp(fs_gamedirvar->string, lastValidGame) ) {
 		// skip the q3config.cfg if "safe" is on the command line
 		if ( !Com_SafeMode() ) {
+#ifdef ELITEFORCE
+			Cbuf_AddText("exec hmconfig.cfg\n");
+#else
 			Cbuf_AddText ("exec q3config.cfg\n");
+#endif
 		}
 	}
 
