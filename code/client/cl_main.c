@@ -1167,7 +1167,10 @@ void CL_SendPureChecksums( void ) {
 	// "cp"
 	// "Yf"
 	Com_sprintf(cMsg, sizeof(cMsg), "Yf ");
-	Q_strcat(cMsg, sizeof(cMsg), va("%d ", cl.serverId) );
+#ifdef ELITEFORCE
+	if(!clc.compat)
+#endif	
+		Q_strcat(cMsg, sizeof(cMsg), va("%d ", cl.serverId) );
 	Q_strcat(cMsg, sizeof(cMsg), pChecksums);
 	for (i = 0; i < 2; i++) {
 		cMsg[i] += 10;
@@ -1541,7 +1544,12 @@ void CL_CheckForResend( void ) {
 		port = Cvar_VariableValue ("net_qport");
 
 		Q_strncpyz( info, Cvar_InfoString( CVAR_USERINFO ), sizeof( info ) );
-		Info_SetValueForKey( info, "protocol", va("%i", PROTOCOL_VERSION ) );
+		#ifdef ELITEFORCE
+		if(clc.compat)
+			Info_SetValueForKey( info, "protocol", va("%i", EFPROTOCOL_VERSION ) );
+		else
+		#endif
+			Info_SetValueForKey( info, "protocol", va("%i", PROTOCOL_VERSION ) );
 		Info_SetValueForKey( info, "qport", va("%i", port ) );
 		Info_SetValueForKey( info, "challenge", va("%i", clc.challenge ) );
 		
@@ -1557,7 +1565,11 @@ void CL_CheckForResend( void ) {
 		data[10+i] = 0;
 
     // NOTE TTimo don't forget to set the right data length!
-		NET_OutOfBandData( NS_CLIENT, clc.serverAddress, (byte *) &data[0], i+10 );
+    		#ifdef ELITEFORCE
+			NET_OutOfBandPrint( NS_CLIENT, clc.serverAddress, (byte *) &data[0]);
+		#else
+			NET_OutOfBandData( NS_CLIENT, clc.serverAddress, (byte *) &data[0], i+10 );
+		#endif
 		// the most current userinfo has been sent, so watch for any
 		// newer changes to userinfo variables
 		cvar_modifiedFlags &= ~CVAR_USERINFO;
@@ -1667,6 +1679,9 @@ void CL_ServersResponsePacket( netadr_t from, msg_t *msg ) {
 	int				numservers;
 	byte*			buffptr;
 	byte*			buffend;
+	#ifdef ELITEFORCE
+	char strbyte[3] = "FF";
+	#endif
 	
 	Com_Printf("CL_ServersResponsePacket\n");
 
@@ -1696,6 +1711,21 @@ void CL_ServersResponsePacket( netadr_t from, msg_t *msg ) {
 			break;
 		}
 
+#ifdef ELITEFORCE
+		// EliteForce uses a slightly different format with bytes encoded
+		// in hex values.
+		for(i = 0; i < 6; i++)
+		{
+			strbyte[0] = toupper(*buffptr++);
+			strbyte[1] = toupper(*buffptr++);
+
+			if(i < 4)
+				addresses[numservers].ip[i] = strtoul(strbyte, NULL, 16);
+			else
+				((unsigned char *) &addresses[numservers].port)[i - 4] =
+					strtoul(strbyte, NULL, 16);
+		}
+#else
 		// parse out ip
 		addresses[numservers].ip[0] = *buffptr++;
 		addresses[numservers].ip[1] = *buffptr++;
@@ -1706,7 +1736,7 @@ void CL_ServersResponsePacket( netadr_t from, msg_t *msg ) {
 		addresses[numservers].port = (*buffptr++)<<8;
 		addresses[numservers].port += *buffptr++;
 		addresses[numservers].port = BigShort( addresses[numservers].port );
-
+#endif
 		// syntax check
 		if (*buffptr != '\\') {
 			break;
@@ -1833,6 +1863,9 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 			return;
 		}
 		Netchan_Setup (NS_CLIENT, &clc.netchan, from, Cvar_VariableValue( "net_qport" ) );
+		#ifdef ELITEFORCE
+		clc.netchan.compat = clc.compat;
+		#endif
 		cls.state = CA_CONNECTED;
 		clc.lastPacketSentTime = -9999;		// send first packet immediately
 		return;
@@ -1878,8 +1911,20 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 	// echo request from server
 	if ( !Q_stricmp(c, "print") ) {
 		s = MSG_ReadString( msg );
-		Q_strncpyz( clc.serverMessage, s, sizeof( clc.serverMessage ) );
-		Com_Printf( "%s", s );
+		#ifdef ELITEFORCE
+		if(!Q_strncmp(s, "Server uses protocol version 24.\n", 33))
+		{
+			clc.compat = qtrue;
+			cls.state = CA_CONNECTING;
+		}
+		else
+		{
+		#endif
+			Q_strncpyz( clc.serverMessage, s, sizeof( clc.serverMessage ) );
+			Com_Printf( "%s", s );
+		#ifdef ELITEFORCE
+		}
+		#endif
 		return;
 	}
 
@@ -1904,7 +1949,10 @@ void CL_PacketEvent( netadr_t from, msg_t *msg ) {
 	int		headerBytes;
 
 	clc.lastPacketTime = cls.realtime;
-
+	#ifdef ELITEFORCE
+	msg->compat = clc.compat;
+	#endif
+	
 	if ( msg->cursize >= 4 && *(int *)msg->data == -1 ) {
 		CL_ConnectionlessPacket( from, msg );
 		return;
@@ -2171,7 +2219,11 @@ void CL_InitRenderer( void ) {
 	re.BeginRegistration( &cls.glconfig );
 
 	// load character sets
+#ifdef ELITEFORCE
+	cls.charSetShader = re.RegisterShaderNoMip( "gfx/2d/charsgrid_med" );
+#else
 	cls.charSetShader = re.RegisterShader( "gfx/2d/bigchars" );
+#endif
 	cls.whiteShader = re.RegisterShader( "white" );
 	cls.consoleShader = re.RegisterShader( "console" );
 	g_console_field_width = cls.glconfig.vidWidth / SMALLCHAR_WIDTH - 2;
@@ -2645,11 +2697,28 @@ void CL_ServerInfoPacket( netadr_t from, msg_t *msg ) {
 	char	*infoString;
 	int		prot;
 
+#ifdef ELITEFORCE
+	// eliteforce doesn't send a \n after infoResponse..
+	infoString = strchr(msg->data, '"');
+	if(!infoString)
+		return;
+	msg->readcount = (int) ((byte *) ++infoString - msg->data);
+	msg->bit = msg->readcount << 3;
+	// find the second " character and empty it.
+	infoString = strchr(infoString, '"');
+	if(infoString)
+		*infoString = '\0';
+#endif
+
 	infoString = MSG_ReadString( msg );
 
 	// if this isn't the correct protocol version, ignore it
 	prot = atoi( Info_ValueForKey( infoString, "protocol" ) );
+#ifdef ELITEFORCE
+	if ( prot != PROTOCOL_VERSION && prot != EFPROTOCOL_VERSION ) {
+#else
 	if ( prot != PROTOCOL_VERSION ) {
+#endif
 		Com_DPrintf( "Different protocol info packet: %s\n", infoString );
 		return;
 	}
@@ -2687,7 +2756,11 @@ void CL_ServerInfoPacket( netadr_t from, msg_t *msg ) {
 					type = 0;
 					break;
 			}
+#ifdef ELITEFORCE
+			Info_SetValueForKey( cl_pinglist[i].info, "nettype", str );
+#else
 			Info_SetValueForKey( cl_pinglist[i].info, "nettype", va("%d", type) );
+#endif
 			CL_SetServerInfoByAddress(from, infoString, cl_pinglist[i].time);
 
 			return;
@@ -2987,6 +3060,9 @@ void CL_GlobalServers_f( void ) {
 	int			count;
 	char		*buffptr;
 	char		command[1024];
+	#ifdef ELITEFORCE
+	int bmaster;
+	#endif
 	
 	if ( Cmd_Argc() < 3) {
 		Com_Printf( "usage: globalservers <master# 0-1> <protocol> [keywords]\n");
@@ -3000,18 +3076,46 @@ void CL_GlobalServers_f( void ) {
 	// reset the list, waiting for response
 	// -1 is used to distinguish a "no response"
 
-	if( cls.masterNum == 1 ) {
+
+	#ifdef ELITEFORCE
+	if((bmaster = Cvar_VariableIntegerValue("ui_browserMaster")))
+	{
+		char *msname;
+		
+		switch(bmaster)
+		{
+			case 1: msname = Cvar_VariableString("sv_master1");
+			break;
+			case 2: msname = Cvar_VariableString("sv_master2");
+			break;
+			case 3: msname = Cvar_VariableString("sv_master3");
+			break;
+			case 4: msname = Cvar_VariableString("sv_master4");
+			break;
+			case 5: msname = Cvar_VariableString("sv_master5");
+			break;
+			default: msname = MASTER_SERVER_NAME;
+			break;
+		}
+		
+		NET_StringToAdr(msname, &to);
+	}
+	else
+	#endif
 		NET_StringToAdr( MASTER_SERVER_NAME, &to );
+
+	if( cls.masterNum == 1 ) {
 		cls.nummplayerservers = -1;
 		cls.pingUpdateSource = AS_MPLAYER;
 	}
 	else {
-		NET_StringToAdr( MASTER_SERVER_NAME, &to );
 		cls.numglobalservers = -1;
 		cls.pingUpdateSource = AS_GLOBAL;
 	}
 	to.type = NA_IP;
+	#ifndef ELITEFORCE
 	to.port = BigShort(PORT_MASTER);
+	#endif
 
 	sprintf( command, "getservers %s", Cmd_Argv(2) );
 

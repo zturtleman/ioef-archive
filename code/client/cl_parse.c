@@ -207,8 +207,11 @@ void CL_ParseSnapshot( msg_t *msg ) {
 
 	// get the reliable sequence acknowledge number
 	// NOTE: now sent with all server to client messages
-	//clc.reliableAcknowledge = MSG_ReadLong( msg );
-
+	#ifdef ELITEFORCE
+	if(msg->compat)
+		clc.reliableAcknowledge = MSG_ReadLong( msg );
+	#endif
+	
 	// read in the new snapshot to a temporary buffer
 	// we will only copy to cl.snap if it is valid
 	Com_Memset (&newSnap, 0, sizeof(newSnap));
@@ -407,9 +410,12 @@ void CL_ParseGamestate( msg_t *msg ) {
 	while ( 1 ) {
 		cmd = MSG_ReadByte( msg );
 
-		if ( cmd == svc_EOF ) {
+		#ifdef ELITEFORCE
+		if((msg->compat && cmd <= 0) || (!msg->compat && cmd == svc_EOF))
+		#else
+		if ( cmd == svc_EOF )
+		#endif
 			break;
-		}
 		
 		if ( cmd == svc_configstring ) {
 			int		len;
@@ -442,7 +448,10 @@ void CL_ParseGamestate( msg_t *msg ) {
 		}
 	}
 
-	clc.clientNum = MSG_ReadLong(msg);
+	#ifdef ELITEFORCE
+	if(!msg->compat)
+	#endif
+		clc.clientNum = MSG_ReadLong(msg);
 	// read the checksum feed
 	clc.checksumFeed = MSG_ReadLong( msg );
 
@@ -450,7 +459,7 @@ void CL_ParseGamestate( msg_t *msg ) {
 	CL_SystemInfoChanged();
 
 	// reinitialize the filesystem if the game directory has changed
-  FS_ConditionalRestart( clc.checksumFeed );
+	FS_ConditionalRestart( clc.checksumFeed );
 
 	// This used to call CL_StartHunkUsers, but now we enter the download state before loading the
 	// cgame
@@ -596,15 +605,22 @@ void CL_ParseServerMessage( msg_t *msg ) {
 		Com_Printf ("------------------\n");
 	}
 
-	MSG_Bitstream(msg);
+	#ifdef ELITEFORCE
+	if(!msg->compat)
+	{
+	#endif
+		MSG_Bitstream(msg);
 
-	// get the reliable sequence acknowledge number
-	clc.reliableAcknowledge = MSG_ReadLong( msg );
-	// 
-	if ( clc.reliableAcknowledge < clc.reliableSequence - MAX_RELIABLE_COMMANDS ) {
-		clc.reliableAcknowledge = clc.reliableSequence;
+		// get the reliable sequence acknowledge number
+		clc.reliableAcknowledge = MSG_ReadLong( msg );
+		// 
+		if ( clc.reliableAcknowledge < clc.reliableSequence - MAX_RELIABLE_COMMANDS ) {
+			clc.reliableAcknowledge = clc.reliableSequence;
+		}
+	#ifdef ELITEFORCE
 	}
-
+	#endif
+	
 	//
 	// parse the message
 	//
@@ -616,7 +632,12 @@ void CL_ParseServerMessage( msg_t *msg ) {
 
 		cmd = MSG_ReadByte( msg );
 
-		if ( cmd == svc_EOF) {
+		#ifdef ELITEFORCE
+		if( (!msg->compat && cmd == svc_EOF) || (msg->compat && cmd == -1))
+		#else
+		if ( cmd == svc_EOF)
+		#endif
+		{
 			SHOWNET( msg, "END OF MESSAGE" );
 			break;
 		}

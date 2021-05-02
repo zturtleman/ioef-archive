@@ -168,6 +168,8 @@ typedef struct client_s {
 	netchan_buffer_t **netchan_end_queue;
 
 	int				oldServerTime;
+	
+	qboolean		compat;		// compatibility mode for original EliteForce
 } client_t;
 
 //=============================================================================

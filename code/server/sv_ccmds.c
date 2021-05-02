@@ -44,6 +44,9 @@ static client_t *SV_GetPlayerByName( void ) {
 	int			i;
 	char		*s;
 	char		cleanName[64];
+	#ifdef ELITEFORCE
+	int plid;
+	#endif
 
 	// make sure server is running
 	if ( !com_sv_running->integer ) {
@@ -56,6 +59,22 @@ static client_t *SV_GetPlayerByName( void ) {
 	}
 
 	s = Cmd_Argv(1);
+
+	#ifdef ELITEFORCE
+	// Check for numeric playerid match
+	if(s[0] >= '0' && s[0] <= '9')
+	{
+		plid = atoi(s);
+		
+		if(plid >= 0 && plid < sv_maxclients->integer)
+		{
+			cl = &svs.clients[plid];
+			
+			if(cl->state)
+				return cl;
+		}
+	}
+	#endif
 
 	// check for a name match
 	for ( i=0, cl=svs.clients ; i < sv_maxclients->integer ; i++,cl++ ) {
