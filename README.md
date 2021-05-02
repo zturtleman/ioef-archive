@@ -4,7 +4,9 @@ ioEF (also known as iostvoyHM) is a fork of ioquake3 for running _Star Trek Voya
 
 ## Patches
 
-In the [patches](patches) directory you can find the original ioEF source code `.diff` patches that can be applied to [ioquake3 svn repository](https://svn.icculus.org/quake3). The ioquake3 svn revision number is included in the patch file name. The patches use to be hosted at [http://thilo.kickchat.com/efport-progress/patches/](https://web.archive.org/web/20180422050624/http://thilo.kickchat.com/efport-progress/patches/) (link to archive.org).
+In the [patches](patches) directory you can find the original ioEF source code `.diff` patches that can be applied to [ioquake3 svn repository](https://svn.icculus.org/quake3). The ioquake3 svn revision number is included in the patch file name. The patches are hosted at http://thilo.tjps.eu/efport-progress/patches/.
+
+The patches were mainly known to be at a domain that expired in 2018, [http://thilo.kickchat.com/efport-progress/patches/](https://web.archive.org/web/20180422050624/http://thilo.kickchat.com/efport-progress/patches/) (link to archive.org). This was the primary motivation for creating ioef-archive.
 
 ## Branches
 
@@ -29,10 +31,6 @@ In this git repo there are branches with the ioEF patches applied to [ioquake3 g
   * [ef_1.38-iorev2123](../../tree/ef_1.38-iorev2123)
   * [ef_1.38-iorev2130](../../tree/ef_1.38-iorev2130) (ioEF 1.38 RC 1 release)
   * [ef_1.38-iorev2231](../../tree/ef_1.38-iorev2231)
-
-## Missing Patches
-
-The older patches were not completely backed up by archive.org (about half of the patch is missing). They are included in the [incomplete-patches-from-archive.org](incomplete-patches-from-archive.org) directory though they are probably not very useful.
 
 ## License
 
