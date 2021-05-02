@@ -12,12 +12,12 @@ The patches were mainly known to be at a domain that expired in 2018, [http://th
 
 In this git repo there are branches with the ioEF patches applied to [ioquake3 git repository](https://github.com/ioquake/ioq3) and some additional changes to fix or simplify compiling. Note that ioquake3 git rewrote the svn history to leave out changes to the website, tags, etc so the EF patch's ioquake3 revision number doesn't directly correspond to the git commit number.
 
-  * efv8-[iorev696](../../commit/08f44d82473c88dad14f1beb23f177f5e364cc20) (missing)
-  * efbeta1-[iorev697](../../commit/08f44d82473c88dad14f1beb23f177f5e364cc20) (missing) <!-- Yes, it's the same commit as efv8 due to ioq3 git leaving out the website. -->
-  * efbeta2-[iorev716](../../commit/91cfe4a77c8ab20a6d9a23443fbf42426ab8b8e0) (missing)
-  * efbeta3-[iorev787](../../commit/d2b5dd1e8a426a4ccd17679e49d14112262e684d) (missing)
-  * ef_1.34-[iorev810](../../commit/d42b87ae8707b205d7d8712b0c95fe27c23962da) (missing) (ioEF 1.34 release)
-  * ef_1.35-[iorev817](../../commit/2c14f02ee51b195feb025ba7c8f0a65af23b437a) (missing) (ioEF 1.35 release)
+  * [efv8-iorev696](../../tree/efv8-iorev696)
+  * [efbeta1-iorev697](../../tree/efbeta1-iorev697)
+  * [efbeta2-iorev716](../../tree/efbeta2-iorev716)
+  * [efbeta3-iorev787](../../tree/efbeta3-iorev787)
+  * [ef_1.34-iorev810](../../tree/ef_1.34-iorev810) (ioEF 1.34 release)
+  * [ef_1.35-iorev817](../../tree/ef_1.35-iorev817) (ioEF 1.35 release)
   * [ef_1.36-iorev880](../../tree/ef_1.36-iorev880) (ioEF 1.36 release)
   * [ef_1.37-iorev965](../../tree/ef_1.37-iorev965) (ioEF 1.37 release)
   * [ef_rev1245](../../tree/ef_rev1245)
