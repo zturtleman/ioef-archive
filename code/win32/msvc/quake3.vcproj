@@ -1916,9 +1916,15 @@
 				RelativePath="..\..\client\snd_codec_wav.c">
 			</File>
 			<File
+<<<<<<< .mine
+				RelativePath="..\..\client\snd_codec_mp3.c">
+			</File>
+			<File
+=======
 				RelativePath="..\..\client\snd_codec_ogg.c">
 			</File>
 			<File
+>>>>>>> .r783
 				RelativePath="..\..\client\snd_dma.c">
 				<FileConfiguration
 					Name="Release TA|Win32">

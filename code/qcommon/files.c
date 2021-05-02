@@ -200,8 +200,12 @@ or configs will never get loaded from disk!
 
 // every time a new demo pk3 file is built, this checksum must be updated.
 // the easiest way to get it is to just run the game and see what it spits out
+#ifdef ELITEFORCE
+#define PAK0_CHECKSUM				3376297517u
+#else
 #define	DEMO_PAK0_CHECKSUM	2985612116u
 #define	PAK0_CHECKSUM				1566731103u
+#endif
 
 // if this is defined, the executable positively won't work with any paks other
 // than the demo pak, even if productid is present.  This is only used for our
@@ -2612,9 +2616,14 @@ qboolean FS_ComparePaks( char *neededpaks, int len, qboolean dlstring ) {
 		havepak = qfalse;
 
 		// never autodownload any of the id paks
+#ifdef ELITEFORCE
+		if(FS_idPak(fs_serverReferencedPakNames[i], BASEGAME))
+			continue;
+#else
 		if ( FS_idPak(fs_serverReferencedPakNames[i], BASEGAME) || FS_idPak(fs_serverReferencedPakNames[i], "missionpack") ) {
 			continue;
 		}
+#endif
 
 		// Make sure the server cannot make us write to non-quake3 directories.
 		if(strstr(fs_serverReferencedPakNames[i], "../") || strstr(fs_serverReferencedPakNames[i], "..\\"))
@@ -2845,6 +2854,7 @@ static void FS_Startup( const char *gameName ) {
 	}
 
 	Com_ReadCDKey(BASEGAME);
+
 	fs = Cvar_Get ("fs_game", "", CVAR_INIT|CVAR_SYSTEMINFO );
 	if (fs && fs->string[0] != 0) {
 		Com_AppendCDKey( fs->string );
@@ -2896,6 +2906,18 @@ static void FS_CheckPak0( void )
 				!Q_stricmpn( path->pack->pakGamename, "demoq3", MAX_OSPATH ))) {
 			foundPak0 = qtrue;
 
+#ifdef ELITEFORCE
+			if(path->pack->checksum != PAK0_CHECKSUM)
+			{
+				Com_Printf("\n\n"
+						"**************************************************\n"
+						"WARNING: pak0.pk3 is present but its checksum (%u)\n"
+						"is not correct. Please re-copy pak0.pk3 from your\n"
+						"legitimate EF CDROM.\n"
+						"**************************************************\n\n\n",
+						path->pack->checksum);
+			}
+#else
 			if( path->pack->checksum == DEMO_PAK0_CHECKSUM ) {
 				Com_Printf( "\n\n"
 						"**************************************************\n"
@@ -2912,6 +2934,7 @@ static void FS_CheckPak0( void )
 						"**************************************************\n\n\n",
 						path->pack->checksum );
 			}
+#endif
 		}
 	}
 
@@ -3357,7 +3380,11 @@ void FS_Restart( int checksumFeed ) {
 	if ( Q_stricmp(fs_gamedirvar->string, lastValidGame) ) {
 		// skip the q3config.cfg if "safe" is on the command line
 		if ( !Com_SafeMode() ) {
+#ifdef ELITEFORCE
+			Cbuf_AddText("exec hmconfig.cfg\n");
+#else
 			Cbuf_AddText ("exec q3config.cfg\n");
+#endif
 		}
 	}
 
